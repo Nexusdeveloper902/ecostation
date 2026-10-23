@@ -502,6 +502,165 @@ class RealtimeServerTest extends TestCase
         $this->assertTrue($this->connectionCloses($teacher, 4.0), 'un usuario inexistente no conserva el socket');
     }
 
+    #[Test]
+    public function a_database_failure_does_not_terminate_the_server(): void
+    {
+        config(['app.key' => self::APP_KEY]);
+
+        $db = $this->freshFileDatabase();
+        $adminId = $this->seedUser($db, 'admin');
+        $port = $this->startServer($db);
+        $this->assertNotNull($port, 'realtime:serve no arrancó');
+
+        [$sock] = $this->upgrade($port, RealtimeToken::issue($adminId, time() + 120));
+        $hello = $this->readMessage($sock);
+        $this->assertSame('hello', $hello['type']);
+
+        // La tabla que alimenta los frames desaparece: cada sondeo falla.
+        DB::connection('realtime_file')->statement('ALTER TABLE events RENAME TO events_unavailable');
+
+        usleep(600000);
+
+        $this->assertTrue(
+            $this->server['process']->isRunning(),
+            'una lectura fallida no debe terminar el proceso',
+        );
+
+        // El servidor sigue atendiendo el protocolo: ping → pong no lee BD.
+        fwrite($sock, WsFrame::encodeMasked('hb', WsFrame::OP_PING, "\x01\x02\x03\x04"));
+        $pong = $this->readFrame($sock, 2.0);
+
+        $this->assertNotNull($pong, 'el servidor dejó de responder tras el fallo de BD');
+        $this->assertSame(WsFrame::OP_PONG, $pong['opcode']);
+        $this->assertSame('hb', $pong['payload']);
+
+        fclose($sock);
+    }
+
+    #[Test]
+    public function the_hello_is_built_before_the_upgrade_and_a_db_failure_answers_plain_503(): void
+    {
+        config(['app.key' => self::APP_KEY]);
+
+        $db = $this->freshFileDatabase();
+        $adminId = $this->seedUser($db, 'admin');
+
+        // El usuario existe (resolveScope funciona) pero el historial no
+        // se puede leer: el hello falla antes del 101.
+        DB::connection('realtime_file')->statement('ALTER TABLE events RENAME TO events_unavailable');
+
+        $port = $this->startServer($db);
+        $this->assertNotNull($port, 'realtime:serve no arrancó');
+
+        [$sock, $head] = $this->upgrade($port, RealtimeToken::issue($adminId, time() + 120));
+
+        $body = (string) @fread($sock, 256);
+
+        $this->assertStringStartsWith('HTTP/1.1 503 Service Unavailable', $head);
+        $this->assertStringNotContainsString('101 Switching Protocols', $head);
+        $this->assertStringContainsString('reintenta', $head.$body);
+
+        fclose($sock);
+        $this->assertTrue($this->server['process']->isRunning(), 'el proceso sigue vivo tras el 503');
+    }
+
+    #[Test]
+    public function a_cross_origin_browser_is_refused_at_the_handshake(): void
+    {
+        config(['app.key' => self::APP_KEY]);
+
+        $db = $this->freshFileDatabase();
+        $adminId = $this->seedUser($db, 'admin');
+        $port = $this->startServer($db);
+        $this->assertNotNull($port, 'realtime:serve no arrancó');
+
+        [$sock, $head] = $this->upgrade(
+            $port,
+            RealtimeToken::issue($adminId, time() + 120),
+            ['Origin' => 'https://evil.example'],
+        );
+
+        $this->assertStringStartsWith('HTTP/1.1 403 Forbidden', $head);
+        $this->assertStringNotContainsString('101 Switching Protocols', $head);
+
+        fclose($sock);
+    }
+
+    #[Test]
+    public function a_missing_upgrade_header_is_refused_before_any_framing(): void
+    {
+        config(['app.key' => self::APP_KEY]);
+
+        $db = $this->freshFileDatabase();
+        $adminId = $this->seedUser($db, 'admin');
+        $port = $this->startServer($db);
+        $this->assertNotNull($port, 'realtime:serve no arrancó');
+
+        [$sock, $head] = $this->upgrade(
+            $port,
+            RealtimeToken::issue($adminId, time() + 120),
+            ['Connection' => 'keep-alive'],
+        );
+
+        $this->assertStringStartsWith('HTTP/1.1 426 Upgrade Required', $head);
+
+        fclose($sock);
+    }
+
+    #[Test]
+    public function the_concurrent_client_cap_rejects_extra_connections(): void
+    {
+        config(['app.key' => self::APP_KEY]);
+
+        $db = $this->freshFileDatabase();
+        $adminId = $this->seedUser($db, 'admin');
+        $port = $this->startServer($db, ['REALTIME_MAX_CLIENTS' => '2']);
+        $this->assertNotNull($port, 'realtime:serve no arrancó');
+
+        // Deja que el sondeo de arranque (fsockopen) se cierre.
+        usleep(500000);
+
+        [$first] = $this->upgrade($port, RealtimeToken::issue($adminId, time() + 120));
+        $this->assertSame('hello', $this->readMessage($first)['type']);
+
+        [$second] = $this->upgrade($port, RealtimeToken::issue($adminId, time() + 120));
+        $this->assertSame('hello', $this->readMessage($second)['type']);
+
+        [$third, $head] = $this->upgrade($port, RealtimeToken::issue($adminId, time() + 120));
+
+        $body = (string) @fread($third, 256);
+
+        $this->assertStringStartsWith('HTTP/1.1 503 Service Unavailable', $head);
+        $this->assertStringContainsString('lleno', $head.$body);
+
+        fclose($third);
+        fclose($first);
+        fclose($second);
+    }
+
+    #[Test]
+    public function a_connection_that_never_completes_the_handshake_is_dropped(): void
+    {
+        config(['app.key' => self::APP_KEY]);
+
+        $db = $this->freshFileDatabase();
+        $this->seedUser($db, 'admin');
+        $port = $this->startServer($db, [
+            'REALTIME_POLL_MS' => '50',
+            'REALTIME_HANDSHAKE_TIMEOUT_SECONDS' => '1',
+        ]);
+        $this->assertNotNull($port, 'realtime:serve no arrancó');
+
+        $sock = @stream_socket_client("tcp://127.0.0.1:{$port}", $errno, $errstr, 5);
+        $this->assertIsResource($sock, "conexión fallida: {$errstr} ({$errno})");
+        stream_set_timeout($sock, 5);
+
+        // Ni una cabecera HTTP: el socket debe cerrarse solo.
+        $this->assertTrue($this->connectionCloses($sock, 4.0), 'un pre-handshake no puede quedarse para siempre');
+
+        fclose($sock);
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private function freshFileDatabase(): string
@@ -707,21 +866,31 @@ class RealtimeServerTest extends TestCase
     }
 
     /** Realiza el upgrade HTTP; devuelve [socket, cabecera de respuesta]. */
-    private function upgrade(int $port, string $token): array
+    private function upgrade(int $port, string $token, array $headers = []): array
     {
         $sock = @stream_socket_client("tcp://127.0.0.1:{$port}", $errno, $errstr, 5);
         $this->assertIsResource($sock, "conexión fallida: {$errstr} ({$errno})");
         stream_set_timeout($sock, 5);
 
-        $key = base64_encode(random_bytes(16));
-        fwrite($sock,
-            'GET /app?token='.urlencode($token)." HTTP/1.1\r\n"
-            ."Host: 127.0.0.1:{$port}\r\n"
-            ."Upgrade: websocket\r\n"
-            ."Connection: Upgrade\r\n"
-            ."Sec-WebSocket-Key: {$key}\r\n"
-            ."Sec-WebSocket-Version: 13\r\n\r\n"
-        );
+        $defaults = [
+            'Host' => "127.0.0.1:{$port}",
+            'Upgrade' => 'websocket',
+            'Connection' => 'Upgrade',
+            'Sec-WebSocket-Key' => base64_encode(random_bytes(16)),
+            'Sec-WebSocket-Version' => '13',
+        ];
+
+        foreach ($headers as $name => $value) {
+            $defaults[$name] = $value;
+        }
+
+        $request = 'GET /app?token='.urlencode($token)." HTTP/1.1\r\n";
+        foreach ($defaults as $name => $value) {
+            $request .= "{$name}: {$value}\r\n";
+        }
+        $request .= "\r\n";
+
+        fwrite($sock, $request);
 
         $head = '';
         while (strpos($head, "\r\n\r\n") === false) {
@@ -759,6 +928,37 @@ class RealtimeServerTest extends TestCase
             }
             if ($result['error'] !== null) {
                 return null;
+            }
+
+            $chunk = @fread($sock, 8192);
+            if ($chunk === false || ($chunk === '' && feof($sock))) {
+                return null;
+            }
+            $buffer .= $chunk;
+        }
+
+        return null;
+    }
+
+    /**
+     * Lee el siguiente frame WebSocket de cualquier opcode (ping/pong,
+     * close, texto). No consume los frames de texto ya leídos por
+     * readMessage; se usa en pruebas de protocolo.
+     *
+     * @return array{fin: bool, opcode: int, payload: string}|null
+     */
+    private function readFrame($sock, float $budget): ?array
+    {
+        $buffer = '';
+        $deadline = microtime(true) + $budget;
+
+        while (microtime(true) < $deadline) {
+            $result = WsFrame::decode($buffer);
+            if ($result['error'] !== null) {
+                return null;
+            }
+            if ($result['frame'] !== null) {
+                return $result['frame'];
             }
 
             $chunk = @fread($sock, 8192);

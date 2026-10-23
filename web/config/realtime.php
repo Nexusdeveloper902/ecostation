@@ -26,6 +26,25 @@ return [
     // Cuántas filas recientes viajan en el frame `hello`.
     'history_limit' => (int) env('REALTIME_HISTORY_LIMIT', 20),
 
+    // Techo de clientes concurrentes (handshake incluido). Un servidor
+    // de aula no debe aceptar sockets sin límite.
+    'max_clients' => (int) env('REALTIME_MAX_CLIENTS', 256),
+
+    // Un socket que no completa el upgrade en este plazo se descarta.
+    'handshake_timeout_seconds' => (int) env('REALTIME_HANDSHAKE_TIMEOUT_SECONDS', 5),
+
+    // Orígenes de navegador permitidos además del mismo host. Los
+    // clientes nativos sin `Origin` siempre pasan.
+    'allowed_origins' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('REALTIME_ALLOWED_ORIGINS', '')),
+    ))),
+
+    // Base pública opcional para el proxy TLS inverso: si se define
+    // (p. ej. `wss://feed.example.com`), el token responde esa URL;
+    // sin ella se conserva el `ws://` de la LAN.
+    'public_url' => env('REALTIME_PUBLIC_URL'),
+
     // Vida del token del feed (se re-emite al reconectar).
     'token_ttl_seconds' => (int) env('REALTIME_TOKEN_TTL_SECONDS', 900),
 

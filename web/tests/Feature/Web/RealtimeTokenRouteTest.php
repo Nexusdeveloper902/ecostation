@@ -120,4 +120,28 @@ class RealtimeTokenRouteTest extends TestCase
         $teacherToken = User::where('role', 'teacher')->firstOrFail()->createToken('x')->plainTextToken;
         $this->withToken($teacherToken)->getJson('/api/v1/realtime/token')->assertForbidden();
     }
+
+    #[Test]
+    public function the_announced_expiry_is_the_exact_expiry_signed_into_the_token(): void
+    {
+        $admin = User::where('role', 'admin')->firstOrFail();
+
+        $response = $this->actingAs($admin)->getJson('/realtime/token')->assertOk();
+
+        [, $signedExpiry] = explode('.', (string) $response->json('token'));
+
+        $this->assertSame((int) $signedExpiry, (int) $response->json('expires_at'));
+    }
+
+    #[Test]
+    public function an_optional_public_url_lets_a_tls_proxy_announce_wss(): void
+    {
+        config(['realtime.public_url' => 'wss://feed.ecostation.test/ws']);
+
+        $admin = User::where('role', 'admin')->firstOrFail();
+
+        $response = $this->actingAs($admin)->getJson('/realtime/token')->assertOk();
+
+        $this->assertSame('wss://feed.ecostation.test/ws/app', $response->json('url'));
+    }
 }

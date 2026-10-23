@@ -42,9 +42,10 @@ final class WsFrame
     }
 
     /**
+     * @param  bool  $requireMask  exige la máscara de cliente RFC 6455 (frames entrantes)
      * @return array{consumed: int, frame: array{fin: bool, opcode: int, payload: string}|null, error: string|null}
      */
-    public static function decode(string $buffer): array
+    public static function decode(string $buffer, bool $requireMask = false): array
     {
         $len = \strlen($buffer);
         if ($len < 2) {
@@ -75,11 +76,29 @@ final class WsFrame
             $offset = 10;
         }
 
-        if ($rsv || $length > self::MAX_INBOUND || ($length !== 0 && $opcode === self::OP_CONT)) {
+        $mask = '';
+        $validOpcodes = [
+            self::OP_CONT, self::OP_TEXT, self::OP_BINARY,
+            self::OP_CLOSE, self::OP_PING, self::OP_PONG,
+        ];
+
+        // Opcodes reservados (0x3-0x7, 0xB-0xF) y control mal formado:
+        // FIN obligatorio y payload <= 125. El servidor no reensambla
+        // fragmentos, así que un FIN=0 también es un error de protocolo.
+        if ($rsv
+            || ! in_array($opcode, $validOpcodes, true)
+            || ! $fin
+            || ($opcode >= self::OP_CLOSE && $length > 125)
+            || $length > self::MAX_INBOUND
+            || $opcode === self::OP_CONT) {
             return ['consumed' => 0, 'frame' => null, 'error' => 'protocol'];
         }
 
-        $mask = '';
+        // Todo frame cliente→servidor debe venir enmascarado.
+        if ($requireMask && ! $masked) {
+            return ['consumed' => 0, 'frame' => null, 'error' => 'protocol'];
+        }
+
         if ($masked) {
             if ($len < $offset + 4) {
                 return ['consumed' => 0, 'frame' => null, 'error' => null];

@@ -11,8 +11,8 @@ use App\Services\Realtime\RealtimeToken;
 use App\Services\Realtime\TapFeedback;
 use App\Services\Realtime\WsFrame;
 use Illuminate\Console\Command;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * realtime:serve — el feed en vivo por WebSockets.
@@ -48,10 +48,19 @@ class RealtimeServeCommand extends Command
 
     private const MAX_HANDSHAKE_BUFFER = 32768;
 
+    /** Techo del buffer de salida por cliente (consumidor lento). */
+    private const MAX_OUTBOUND_BUFFER = 1048576;
+
+    /** El hello nunca lleva más de 20 eventos ni más de 64 KiB. */
+    private const HELLO_MAX_EVENTS = 20;
+
+    private const HELLO_MAX_BYTES = 65536;
+
     /**
      * @var array<int, array{
      *     sock: resource,
      *     buf: string,
+     *     out: string,
      *     handshook: bool,
      *     admin: bool,
      *     role: string,
@@ -63,6 +72,13 @@ class RealtimeServeCommand extends Command
      * }>
      */
     private array $clients = [];
+
+    private int $maxClients = 256;
+
+    private int $handshakeTimeout = 5;
+
+    /** @var array<int, string> */
+    private array $allowedOrigins = [];
 
     private int $lastEventId = 0;
 
@@ -113,6 +129,10 @@ class RealtimeServeCommand extends Command
         $pollMs = max(50, (int) config('realtime.poll_ms'));
         $historyLimit = max(1, (int) config('realtime.history_limit'));
 
+        $this->maxClients = max(1, (int) config('realtime.max_clients', 256));
+        $this->handshakeTimeout = max(1, (int) config('realtime.handshake_timeout_seconds', 5));
+        $this->allowedOrigins = array_values((array) config('realtime.allowed_origins', []));
+
         $server = @stream_socket_server("tcp://{$host}:{$port}", $errno, $errstr);
         if ($server === false) {
             $this->error("realtime:serve no puede escuchar en {$host}:{$port} — {$errstr} ({$errno}).");
@@ -134,10 +154,17 @@ class RealtimeServeCommand extends Command
 
         while (true) {
             $read = [$server];
+            $write = [];
             foreach ($this->clients as $client) {
                 $read[] = $client['sock'];
+                // Solo los sockets con bytes pendientes entran en el
+                // conjunto de escritura: backpressure real, no un
+                // `fwrite` que descarta la cola.
+                if ($client['out'] !== '') {
+                    $write[] = $client['sock'];
+                }
             }
-            $write = $except = null;
+            $except = null;
 
             $ready = @stream_select($read, $write, $except, self::SELECT_TIMEOUT_SECONDS, self::SELECT_TIMEOUT_MICRO);
             if ($ready === false) {
@@ -152,6 +179,10 @@ class RealtimeServeCommand extends Command
                 }
             }
 
+            foreach ($write as $socket) {
+                $this->flush((int) $socket);
+            }
+
             $this->poll($pollMs);
         }
 
@@ -164,10 +195,21 @@ class RealtimeServeCommand extends Command
         if ($new === false) {
             return;
         }
+
+        // Sin tope, un cliente (o un bug) puede agotar descriptores. El
+        // rechazo es HTTP plano: todavía no hay framing WebSocket.
+        if (\count($this->clients) >= $this->maxClients) {
+            @fwrite($new, Handshake::denialResponse(503, 'El feed en vivo está lleno; reintenta en unos segundos.'));
+            @fclose($new);
+
+            return;
+        }
+
         stream_set_blocking($new, false);
         $this->clients[(int) $new] = [
             'sock' => $new,
             'buf' => '',
+            'out' => '',
             'handshook' => false,
             'admin' => false,
             'role' => '',
@@ -210,7 +252,7 @@ class RealtimeServeCommand extends Command
         }
 
         while (true) {
-            $result = WsFrame::decode($this->clients[$clientId]['buf']);
+            $result = WsFrame::decode($this->clients[$clientId]['buf'], requireMask: true);
             if ($result['error'] !== null) {
                 $this->drop($clientId);
 
@@ -238,71 +280,153 @@ class RealtimeServeCommand extends Command
         $head = substr($buffer, 0, $headEnd);
         $rest = substr($buffer, $headEnd + 4);
         $request = Handshake::parseRequest($head);
+        $target = (string) $request['target'];
 
         $token = $request['query']['token'] ?? null;
         $claims = RealtimeToken::inspect(\is_string($token) ? $token : null);
 
         if ($claims === null || $claims['expires_at'] < time()) {
-            @fwrite($socket, Handshake::denialResponse(401, 'Token de feed en vivo inválido o vencido.'));
-            $this->drop($clientId);
+            $this->reject($clientId, $socket, 401, 'Token de feed en vivo inválido o vencido.', $target);
+
+            return;
+        }
+
+        if (! Handshake::isUpgrade($request)) {
+            $this->reject($clientId, $socket, 426, 'Se requiere una actualización WebSocket.', $target);
+
+            return;
+        }
+
+        if (! Handshake::originAllowed($request, $this->allowedOrigins)) {
+            $this->reject($clientId, $socket, 403, 'Origen no permitido para el feed en vivo.', $target);
 
             return;
         }
 
         $userId = $claims['user_id'];
 
-        if (! Handshake::isUpgrade($request)) {
-            @fwrite($socket, Handshake::denialResponse(426, 'Se requiere una actualización WebSocket.'));
-            $this->drop($clientId);
-
-            return;
-        }
-
         // Un usuario inexistente se rechaza ANTES del 101 (falla cerrada).
         $scope = $this->resolveScope($userId);
         if ($scope === null) {
-            @fwrite($socket, Handshake::denialResponse(401, 'Usuario de feed en vivo desconocido.'));
-            $this->drop($clientId);
+            $this->reject($clientId, $socket, 401, 'Usuario de feed en vivo desconocido.', $target);
 
             return;
         }
 
-        $this->clients[$clientId]['admin'] = $scope['admin'];
-        $this->clients[$clientId]['role'] = $scope['role'];
-        $this->clients[$clientId]['class_ids'] = $scope['class_ids'];
-        $this->clients[$clientId]['user_id'] = $userId;
+        $client = $this->clients[$clientId];
+        $client['admin'] = $scope['admin'];
+        $client['role'] = $scope['role'];
+        $client['class_ids'] = $scope['class_ids'];
+        $client['user_id'] = $userId;
         // Auth is not frozen at handshake: the token expiry and the
         // user's current role/classes are re-checked while connected.
-        $this->clients[$clientId]['expires_at'] = $claims['expires_at'];
-        $this->clients[$clientId]['connected_at'] = microtime(true);
-        $this->clients[$clientId]['scope_checked_at'] = microtime(true);
+        $client['expires_at'] = $claims['expires_at'];
+        $client['connected_at'] = microtime(true);
+        $client['scope_checked_at'] = microtime(true);
+
+        // El hello se construye ANTES de enviar el 101: si la base falla,
+        // el cliente recibe un 503 plano y nunca un upgrade a medias.
+        try {
+            $hello = $this->buildHello($client);
+            $frame = WsFrame::encode(
+                json_encode($hello, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+            );
+        } catch (\Throwable) {
+            DB::purge();
+            $this->reject(
+                $clientId,
+                $socket,
+                503,
+                'El feed en vivo no puede leer la base de datos; reintenta en unos segundos.',
+                $target,
+            );
+
+            return;
+        }
+
+        $client['handshook'] = true;
+        $client['buf'] = $rest;
+        $this->clients[$clientId] = $client;
 
         $accept = Handshake::acceptKey($request['headers']['sec-websocket-key']);
-        @fwrite($socket, Handshake::successResponse($accept));
+        $this->writeRaw($clientId, Handshake::successResponse($accept));
+        $this->write($clientId, $frame);
+    }
 
-        $this->clients[$clientId]['handshook'] = true;
-        $this->clients[$clientId]['buf'] = $rest;
+    /**
+     * @param  array<string, mixed>  $client
+     * @return array<string, mixed>
+     */
+    private function buildHello(array $client): array
+    {
+        // El hello tiene un techo duro: 20 filas por canal histórico. Si
+        // aun así excede 64 KiB, se recortan las más viejas.
+        $limit = min(max(1, (int) config('realtime.history_limit')), self::HELLO_MAX_EVENTS);
 
-        $client = $this->clients[$clientId];
+        $events = \array_values(\array_filter(
+            $this->feed->recent($limit),
+            fn (array $row): bool => $this->clientSeesTap($client, $row),
+        ));
+
+        $recycling = \array_values(\array_filter(
+            $this->recycling->recent($limit),
+            fn (array $row): bool => $this->clientSeesRecycling($client, (string) $row['type'], $row['payload']),
+        ));
 
         $hello = [
             'type' => 'hello',
             'last_id' => $this->lastEventId,
-            'events' => \array_values(\array_filter(
-                $this->feed->recent((int) config('realtime.history_limit')),
-                fn (array $row): bool => $this->clientSeesTap($client, $row),
-            )),
-            'recycling' => \array_values(\array_filter(
-                $this->recycling->recent((int) config('realtime.history_limit')),
-                fn (array $row): bool => $this->clientSeesRecycling($client, (string) $row['type'], $row['payload']),
-            )),
+            'events' => $events,
+            'recycling' => $recycling,
         ];
 
         if ($client['admin']) {
             $hello['pairing'] = $this->pairing->payload();
         }
 
-        $this->sendJson($socket, $hello);
+        return $this->boundedHello($hello);
+    }
+
+    /**
+     * Recorta desde el extremo más viejo hasta caber en el techo. Los
+     * frames conservan su forma: solo se omite historial.
+     *
+     * @param  array<string, mixed>  $hello
+     * @return array<string, mixed>
+     */
+    private function boundedHello(array $hello): array
+    {
+        while (\strlen((string) json_encode($hello, JSON_UNESCAPED_UNICODE)) > self::HELLO_MAX_BYTES) {
+            if (! empty($hello['events'])) {
+                array_shift($hello['events']);
+
+                continue;
+            }
+
+            if (! empty($hello['recycling'])) {
+                array_shift($hello['recycling']);
+
+                continue;
+            }
+
+            break;
+        }
+
+        return $hello;
+    }
+
+    /** Rechazo HTTP plano; el target se registra con el token enmascarado. */
+    private function reject(int $clientId, $socket, int $status, string $reason, string $target = ''): void
+    {
+        if ($target !== '') {
+            Log::debug('realtime: handshake rechazado', [
+                'path' => Handshake::redactTarget($target),
+                'status' => $status,
+            ]);
+        }
+
+        @fwrite($socket, Handshake::denialResponse($status, $reason));
+        $this->drop($clientId);
     }
 
     /**
@@ -421,13 +545,14 @@ class RealtimeServeCommand extends Command
         // Auth is a live property, not a handshake souvenir.
         $this->maintainConnections();
 
-        // ---- tap ----------------------------------------------------
+        // Cada canal es independiente: una lectura fallida (base
+        // bloqueada, tabla ausente, archivo reemplazado) omite SU frame
+        // y el servidor sigue sirviendo los demás.
         try {
             $rows = $this->feed->eventsAfter($this->lastEventId);
-        } catch (QueryException) {
+        } catch (\Throwable) {
             DB::purge();
-
-            return;
+            $rows = [];
         }
 
         foreach ($rows as $row) {
@@ -443,18 +568,28 @@ class RealtimeServeCommand extends Command
         // ---- pairing (solo admin) ----------------------------------
         try {
             $signature = $this->pairing->signature();
-        } catch (QueryException) {
+        } catch (\Throwable) {
             DB::purge();
-
-            return;
+            $signature = null;
         }
 
-        if ($signature !== $this->lastPairingSignature) {
-            $this->lastPairingSignature = $signature;
-            $frame = WsFrame::encode(json_encode(['type' => 'pairing'] + $this->pairing->payload(), JSON_UNESCAPED_UNICODE));
-            foreach ($this->clients as $clientId => $client) {
-                if ($client['handshook'] && $client['admin']) {
-                    $this->write($clientId, $frame);
+        if ($signature !== null && $signature !== $this->lastPairingSignature) {
+            try {
+                $payload = $this->pairing->payload();
+            } catch (\Throwable) {
+                DB::purge();
+                $payload = null;
+            }
+
+            // Sin payload no se avanza la firma: el próximo sondeo lo
+            // reintenta en vez de perder el cambio.
+            if ($payload !== null) {
+                $this->lastPairingSignature = $signature;
+                $frame = WsFrame::encode(json_encode(['type' => 'pairing'] + $payload, JSON_UNESCAPED_UNICODE));
+                foreach ($this->clients as $clientId => $client) {
+                    if ($client['handshook'] && $client['admin']) {
+                        $this->write($clientId, $frame);
+                    }
                 }
             }
         }
@@ -462,10 +597,9 @@ class RealtimeServeCommand extends Command
         // ---- recycling ---------------------------------------------
         try {
             $updates = $this->recycling->updatesAfter($this->lastRecyclingId);
-        } catch (QueryException) {
+        } catch (\Throwable) {
             DB::purge();
-
-            return;
+            $updates = [];
         }
 
         foreach ($updates as $update) {
@@ -484,10 +618,9 @@ class RealtimeServeCommand extends Command
         // ---- feedback (admin + estación) ---------------------------
         try {
             $cues = $this->tapFeedback->after($this->lastFeedbackId);
-        } catch (QueryException) {
+        } catch (\Throwable) {
             DB::purge();
-
-            return;
+            $cues = [];
         }
 
         foreach ($cues as $cue) {
@@ -503,8 +636,9 @@ class RealtimeServeCommand extends Command
     }
 
     /**
-     * Token expiry, hard connection cap and role/class rescoping. Runs
-     * on every poll (the poll is the server's only clock).
+     * Token expiry, hard connection cap, pre-handshake timeout and
+     * role/class rescoping. Runs on every poll (the poll is the server's
+     * only clock).
      */
     private function maintainConnections(): void
     {
@@ -516,7 +650,17 @@ class RealtimeServeCommand extends Command
         foreach (\array_keys($this->clients) as $clientId) {
             $client = $this->clients[$clientId] ?? null;
 
-            if ($client === null || ! $client['handshook']) {
+            if ($client === null) {
+                continue;
+            }
+
+            if (! $client['handshook']) {
+                // Un socket que nunca completa el upgrade no puede
+                // ocupar un descriptor indefinidamente.
+                if (($now - $client['connected_at']) >= $this->handshakeTimeout) {
+                    $this->drop($clientId);
+                }
+
                 continue;
             }
 
@@ -559,22 +703,63 @@ class RealtimeServeCommand extends Command
             return;
         }
 
-        @fwrite($this->clients[$clientId]['sock'], WsFrame::encode($reason, WsFrame::OP_CLOSE));
+        $this->write($clientId, WsFrame::encode($reason, WsFrame::OP_CLOSE));
         $this->drop($clientId);
     }
 
-    private function sendJson($socket, array $message): void
-    {
-        $this->write((int) $socket, WsFrame::encode(json_encode($message, JSON_UNESCAPED_UNICODE)));
-    }
-
-    private function write(int $clientId, string $frame): void
+    /** Encola bytes crudos (101) o un frame ya codificado. */
+    private function writeRaw(int $clientId, string $bytes): void
     {
         if (! isset($this->clients[$clientId])) {
             return;
         }
-        if (@fwrite($this->clients[$clientId]['sock'], $frame) === false) {
+
+        $this->clients[$clientId]['out'] .= $bytes;
+
+        // Un cliente que no drena la cola no puede hacer crecer la
+        // memoria del servidor sin límite: se descarta.
+        if (\strlen($this->clients[$clientId]['out']) > self::MAX_OUTBOUND_BUFFER) {
             $this->drop($clientId);
+
+            return;
+        }
+
+        $this->flush($clientId);
+    }
+
+    private function write(int $clientId, string $frame): void
+    {
+        $this->writeRaw($clientId, $frame);
+    }
+
+    /** Escribe lo pendiente; una escritura parcial conserva el resto. */
+    private function flush(int $clientId): void
+    {
+        if (! isset($this->clients[$clientId])) {
+            return;
+        }
+
+        while ($this->clients[$clientId]['out'] !== '') {
+            $written = @fwrite(
+                $this->clients[$clientId]['sock'],
+                $this->clients[$clientId]['out'],
+            );
+
+            if ($written === false) {
+                $this->drop($clientId);
+
+                return;
+            }
+
+            if ($written === 0) {
+                if (feof($this->clients[$clientId]['sock'])) {
+                    $this->drop($clientId);
+                }
+
+                return;
+            }
+
+            $this->clients[$clientId]['out'] = substr($this->clients[$clientId]['out'], $written);
         }
     }
 

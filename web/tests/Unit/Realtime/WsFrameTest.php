@@ -98,4 +98,64 @@ class WsFrameTest extends TestCase
         $this->assertSame(WsFrame::OP_PING, $result['frame']['opcode']);
         $this->assertSame('hb', $result['frame']['payload']);
     }
+
+    #[Test]
+    public function a_masked_client_frame_decodes_when_the_mask_is_required(): void
+    {
+        $frame = WsFrame::encodeMasked('hi', WsFrame::OP_PING, "\x01\x02\x03\x04");
+
+        $result = WsFrame::decode($frame, requireMask: true);
+
+        $this->assertNull($result['error']);
+        $this->assertSame('hi', $result['frame']['payload']);
+    }
+
+    #[Test]
+    public function an_unmasked_client_frame_is_rejected_when_the_mask_is_required(): void
+    {
+        $result = WsFrame::decode(WsFrame::encode('unmasked'), requireMask: true);
+
+        $this->assertSame('protocol', $result['error']);
+        $this->assertNull($result['frame']);
+    }
+
+    #[Test]
+    public function rsv_bits_are_rejected(): void
+    {
+        $frame = WsFrame::encodeMasked('x', WsFrame::OP_TEXT, "\0\0\0\0");
+        $frame[0] = \chr(\ord($frame[0]) | 0x40);
+
+        $this->assertSame('protocol', WsFrame::decode($frame, requireMask: true)['error']);
+    }
+
+    #[Test]
+    public function fragmented_control_frames_are_rejected(): void
+    {
+        $frame = WsFrame::encodeMasked('hb', WsFrame::OP_PING, "\0\0\0\0");
+        $frame[0] = \chr(\ord($frame[0]) & 0x7F);
+
+        $this->assertSame('protocol', WsFrame::decode($frame, requireMask: true)['error']);
+    }
+
+    #[Test]
+    public function control_payloads_over_125_bytes_are_rejected(): void
+    {
+        $frame = WsFrame::encodeMasked(str_repeat('x', 126), WsFrame::OP_PING, "\0\0\0\0");
+
+        $this->assertSame('protocol', WsFrame::decode($frame, requireMask: true)['error']);
+    }
+
+    #[Test]
+    public function reserved_opcodes_are_rejected(): void
+    {
+        foreach ([0x3, 0x7, 0xB, 0xF] as $opcode) {
+            $frame = WsFrame::encodeMasked('x', $opcode, "\0\0\0\0");
+
+            $this->assertSame(
+                'protocol',
+                WsFrame::decode($frame, requireMask: true)['error'],
+                sprintf('opcode 0x%X debe rechazarse', $opcode),
+            );
+        }
+    }
 }

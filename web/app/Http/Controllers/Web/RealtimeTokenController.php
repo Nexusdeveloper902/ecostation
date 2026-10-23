@@ -21,10 +21,19 @@ class RealtimeTokenController extends Controller
         /** @var User $user */
         $user = auth()->user();
 
+        // Un solo reloj: la caducidad que se anuncia es exactamente la
+        // que quedó firmada dentro del token.
+        $expiresAt = RealtimeToken::freshExpiry();
+
+        $publicBase = config('realtime.public_url');
+        $url = is_string($publicBase) && $publicBase !== ''
+            ? rtrim($publicBase, '/').'/app'
+            : 'ws://'.request()->getHost().':'.(int) config('realtime.port').'/app';
+
         return response()->json([
-            'token' => RealtimeToken::issue((int) $user->id),
-            'expires_at' => RealtimeToken::freshExpiry(),
-            'url' => 'ws://'.request()->getHost().':'.(int) config('realtime.port').'/app',
+            'token' => RealtimeToken::issue((int) $user->id, $expiresAt),
+            'expires_at' => $expiresAt,
+            'url' => $url,
         ]);
     }
 }
