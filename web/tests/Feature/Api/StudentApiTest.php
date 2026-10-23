@@ -142,6 +142,41 @@ class StudentApiTest extends TestCase
     }
 
     #[Test]
+    public function rotating_the_password_revokes_every_other_token(): void
+    {
+        $maria = $this->studentAccount('maria');
+        $current = $maria->createToken('telefono-actual', ['student'])->plainTextToken;
+        $other = $maria->createToken('telefono-viejo', ['student'])->plainTextToken;
+
+        $this->asStudent($current)->getJson('/api/v1/me/balance')->assertOk();
+
+        $this->asStudent($current)->putJson('/api/v1/auth/password', [
+            'current_password' => 'password',
+            'password' => 'clave-nueva-123',
+            'password_confirmation' => 'clave-nueva-123',
+        ])->assertNoContent();
+
+        // The token that performed the rotation survives; the other dies.
+        $this->asStudent($current)->getJson('/api/v1/me/balance')->assertOk();
+        $this->asStudent($other)->getJson('/api/v1/me/balance')->assertUnauthorized();
+    }
+
+    #[Test]
+    public function tokens_expire_after_the_configured_window(): void
+    {
+        config(['sanctum.expiration' => 60 * 24 * 30]);
+
+        $maria = $this->studentAccount('maria');
+        $token = $maria->createToken('telefono', ['student'])->plainTextToken;
+
+        $this->asStudent($token)->getJson('/api/v1/me/balance')->assertOk();
+
+        $this->travel(31)->days();
+
+        $this->asStudent($token)->getJson('/api/v1/me/balance')->assertUnauthorized();
+    }
+
+    #[Test]
     public function logout_revokes_the_token(): void
     {
         $maria = $this->studentAccount('maria');

@@ -33,6 +33,20 @@ abstract class TestCase extends BaseTestCase
         ];
     }
 
+    /**
+     * Start a clean browser session for another user. AuthenticateSession
+     * pins the password hash of the session owner, so switching users in
+     * one test must not reuse the previous session.
+     */
+    protected function actingAsFresh(User $user): static
+    {
+        $this->flushSession();
+        $this->app['auth']->forgetGuards();
+        $this->actingAs($user);
+
+        return $this;
+    }
+
     protected function admin(): User
     {
         return User::where('email', 'admin@ecostation.test')->firstOrFail();

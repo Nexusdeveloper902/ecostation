@@ -132,6 +132,11 @@ class AuthTest extends TestCase
         ];
 
         foreach ($targets as $role => $target) {
+            // Fresh browser session per role: AuthenticateSession pins the
+            // password hash of the user that owns the session.
+            $this->flushSession();
+            $this->app['auth']->forgetGuards();
+
             $this->actingAs($this->user($role))->get('/')->assertRedirect($target);
         }
     }

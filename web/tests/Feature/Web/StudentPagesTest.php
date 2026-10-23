@@ -76,7 +76,7 @@ class StudentPagesTest extends TestCase
             ->assertViewHas('deposits', fn ($deposits) => $deposits->total() === 1)
             ->assertSee('plastic');
 
-        $this->actingAs($this->accountOf('Carlos Pérez'))
+        $this->actingAsFresh($this->accountOf('Carlos Pérez'))
             ->get('/student/history')
             ->assertOk()
             ->assertViewHas('deposits', fn ($deposits) => $deposits->total() === 0)

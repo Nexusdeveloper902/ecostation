@@ -7,6 +7,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Session\Middleware\AuthenticateSession;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -26,6 +27,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // middleware itself exempts the login/logout/password routes.
         $middleware->appendToGroup('web', EnsurePasswordChanged::class);
         $middleware->appendToGroup('api', EnsurePasswordChanged::class);
+
+        // A password change/rotation invalidates every session that still
+        // carries the old password hash (remember-me included).
+        $middleware->appendToGroup('web', AuthenticateSession::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

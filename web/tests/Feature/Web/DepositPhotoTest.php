@@ -92,7 +92,7 @@ class DepositPhotoTest extends TestCase
         $this->actingAs($this->teacher())->get("/deposits/{$other->id}/photo")->assertNotFound();
 
         $student = User::where('role', 'student')->firstOrFail();
-        $this->actingAs($student)->get("/deposits/{$own->id}/photo")->assertForbidden();
+        $this->actingAsFresh($student)->get("/deposits/{$own->id}/photo")->assertForbidden();
     }
 
     #[Test]
@@ -111,7 +111,7 @@ class DepositPhotoTest extends TestCase
         $this->actingAs($this->teacher())->get("/deposits/{$deposit->id}/photo")->assertOk();
 
         // The teacher of the NEW class cannot see a historical 5° A photo.
-        $this->actingAs($this->teacherOf($classB, 'docente-b@ecostation.test'))
+        $this->actingAsFresh($this->teacherOf($classB, 'docente-b@ecostation.test'))
             ->get("/deposits/{$deposit->id}/photo")
             ->assertNotFound();
 

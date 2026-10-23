@@ -6,8 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Support\HomeTarget;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Laravel\Sanctum\PersonalAccessToken;
 
 /**
  * Forced (and voluntary) password rotation.
@@ -46,10 +49,34 @@ class PasswordController extends Controller
         $user = $request->user();
         $user->password = $validated['password'];
         $user->must_change_password = false;
+
+        // A stolen remember-me cookie must not survive either.
+        $user->setRememberToken(Str::random(60));
         $user->save();
+
+        // Every API token minted before the rotation dies; a web session
+        // has no current PAT, so all of them go.
+        $currentToken = $user->currentAccessToken();
+        $tokens = $user->tokens();
+
+        if ($currentToken instanceof PersonalAccessToken) {
+            $tokens->whereKeyNot($currentToken->getKey());
+        }
+
+        $tokens->delete();
+
+        // Drop every other real session row for this user. The current
+        // row is kept and then regenerated below; DB rows belong to the
+        // user only, so another user's session is never touched.
+        $currentSessionId = $request->session()->getId();
+        DB::table('sessions')
+            ->where('user_id', $user->getKey())
+            ->where('id', '!=', $currentSessionId)
+            ->delete();
 
         // A stolen pre-rotation session must not survive the rotation.
         $request->session()->regenerate();
+        $request->session()->regenerateToken();
 
         return redirect()->to(HomeTarget::for($user))
             ->with('status', __('auth.password_changed'));

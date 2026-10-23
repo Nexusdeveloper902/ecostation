@@ -10,6 +10,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\PersonalAccessToken;
 
 /**
  * The Android app's token surface (Task 12).
@@ -83,6 +84,18 @@ class AuthTokenController extends Controller
         $user->password = $validated['password'];
         $user->must_change_password = false;
         $user->save();
+
+        // The phone that rotated keeps its token; every other device is
+        // logged out. A session-authenticated caller has no current PAT,
+        // so all tokens are revoked.
+        $current = $user->currentAccessToken();
+        $tokens = $user->tokens();
+
+        if ($current instanceof PersonalAccessToken) {
+            $tokens->whereKeyNot($current->getKey());
+        }
+
+        $tokens->delete();
 
         return response()->noContent();
     }

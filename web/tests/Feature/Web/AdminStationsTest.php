@@ -107,8 +107,10 @@ class AdminStationsTest extends TestCase
         ];
 
         foreach ([$this->teacher(), User::where('email', 'estacion@ecostation.test')->firstOrFail()] as $user) {
+            $this->actingAsFresh($user);
+
             foreach ($routes as [$method, $uri]) {
-                $this->actingAs($user)->{$method}($uri)->assertForbidden();
+                $this->{$method}($uri)->assertForbidden();
             }
         }
     }

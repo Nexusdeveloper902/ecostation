@@ -194,7 +194,8 @@ class TeacherPagesTest extends TestCase
         $this->assertStringContainsString('5° A', $own->streamedContent());
 
         $otherTeacher = $this->teacherOf($classB, 'docente-b@ecostation.test');
-        $other = $this->actingAs($otherTeacher)->get('/teacher/export.csv');
+        $this->actingAsFresh($otherTeacher);
+        $other = $this->get('/teacher/export.csv');
         $other->assertOk();
         $this->assertStringNotContainsString('Maria González', $other->streamedContent());
     }
