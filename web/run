@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Despachador de EcoStation web. Uso: ./run setup|serve|test|ci
+set -euo pipefail
+cd "$(dirname "$0")"
+
+usage() {
+    cat >&2 <<'USO'
+Uso: ./run <comando>
+
+  setup   instala dependencias, crea .env y la base SQLite, migra y siembra
+  serve   levanta la app en http://localhost:8000
+  test    ejecuta las pruebas (los argumentos pasan a `php artisan test`)
+  ci      Pint + pruebas, igual que la integración continua
+USO
+    exit 2
+}
+
+case "${1:-}" in
+    setup)
+        composer install
+        cp -n .env.example .env
+        php artisan key:generate
+        touch database/database.sqlite
+        php artisan migrate --seed --force
+        echo
+        echo "Credenciales de demostración (solo desarrollo, cámbialas):"
+        echo "  correo: demo@ecostation.test"
+        echo "  clave:  demo1234"
+        ;;
+    serve) php artisan serve --host=0.0.0.0 --port=8000 ;; # ponytail: solo web; el feed en tiempo real se añade en la Tarea 15
+    test) shift; php artisan test "$@" ;;
+    ci) vendor/bin/pint --test && php artisan test ;;
+    *) usage ;;
+esac
