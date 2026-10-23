@@ -7,12 +7,19 @@ use App\Models\PresenceEvent;
 use App\Models\Reader;
 use App\Models\Student;
 use App\Models\User;
+use App\Services\SettingsService;
 use Database\Seeders\DemoSeeder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        SettingsService::flushCache();
+    }
+
     /** @return array{admin: User, teacher: User, station: User, students: Collection} */
     protected function seedDemo(): array
     {

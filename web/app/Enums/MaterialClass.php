@@ -10,9 +10,9 @@ enum MaterialClass: string
     case Glass = 'glass';
     case Other = 'other';
 
-    /** Points per material. Task 3 rewrites this to honor the admin-editable settings override. */
+    /** Points per material: the single source for award amounts (settings override -> config default). */
     public function points(): int
     {
-        return (int) config("recycling.points.{$this->value}", 0);
+        return settings()->pointsFor($this);
     }
 }
