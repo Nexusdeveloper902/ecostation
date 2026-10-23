@@ -6,6 +6,7 @@
 #include "WifiService.h"
 #include "EcoStationDiscovery.h"
 #include "StationLed.h"
+#include "Rc522NfcReader.h"
 
 void setup() {}
 
