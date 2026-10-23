@@ -8,6 +8,7 @@ use App\Services\DeviceAuth\DeviceRequestSigner;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
@@ -69,8 +70,16 @@ class StationController extends Controller
     {
         $label = $reader->label;
 
-        // Foreign keys cascade the station's events (and their deposits);
-        // ledger rows survive with event_id nulled, so balances keep value.
+        // Foreign keys would cascade the station's events (and their
+        // deposits), erasing student history. Once a reader has produced
+        // events it stays; the desk rotates its key instead.
+        if ($reader->events()->exists()) {
+            throw ValidationException::withMessages([
+                'station' => "La estación {$label} tiene eventos registrados y no se puede eliminar. "
+                    .'Usa "Rotar clave" para dejar de confiar en la clave actual sin borrar el historial.',
+            ]);
+        }
+
         $reader->delete();
 
         return redirect()->route('admin.stations')->with('status', 'Estación eliminada: '.$label);

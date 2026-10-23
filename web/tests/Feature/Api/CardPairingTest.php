@@ -160,16 +160,29 @@ class CardPairingTest extends TestCase
     }
 
     #[Test]
-    public function an_inactive_card_is_also_rejected_as_already_paired(): void
+    public function a_revoked_card_is_reactivated_for_the_armed_student(): void
     {
-        // A lost/revoked credential must not silently re-link to a new
-        // student; replacement cards are NEW credentials by design.
+        // Unpair/revoke keeps the row, so the same credential_uid may be
+        // re-linked deliberately: no new card row, history untouched.
         $card = $this->cardOf('Ana Martínez');
         $card->update(['status' => 'revoked']);
 
         $target = $this->studentWithoutCard();
         $this->arm($target);
 
+        $this->pair($card->credential_uid)->assertOk()
+            ->assertJson([
+                'status' => 'ok',
+                'student_id' => $target->id,
+                'rekeyed' => false,
+            ]);
+
+        $card->refresh();
+        $this->assertSame('active', $card->status->value);
+        $this->assertSame($target->id, (int) $card->student_id);
+
+        // An ACTIVE card of someone else is still never reassigned.
+        $this->arm($this->studentWithoutCard());
         $this->pair($card->credential_uid)->assertStatus(422)
             ->assertJson(['message' => 'La tarjeta ya está emparejada']);
     }

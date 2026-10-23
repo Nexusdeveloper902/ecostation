@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Enums\CardStatus;
 use App\Models\Card;
+use App\Models\HceCredentialKey;
 use App\Models\PendingPairing;
 use App\Models\Reader;
 use App\Models\Student;
@@ -121,6 +123,8 @@ class PairingService
      * An `hce` pairing is also the key hand-off: the key is accepted only
      * if the proof verifies under it, and an existing phone credential can
      * be re-keyed only for the same student this window was armed for.
+     * A `revoked` credential (unpair) is deliberately reactivatable for
+     * the armed student; an ACTIVE one owned by someone else is not.
      *
      * @param  array<string, mixed>  $hce
      * @return array{ok: true, card: Card, student: Student, pairing: PendingPairing, rekeyed: bool}|array{ok: false, reason: 'no_session'|'already_paired'|'hce_proof_invalid'}
@@ -173,6 +177,29 @@ class PairingService
 
                     return $this->consume($pairing, $reader, $existing, rekeyed: true);
                 }
+            }
+
+            // A revoked card belongs to nobody in operation: an armed
+            // window may deliberately reactivate that same credential for
+            // the student at the desk. The row (and therefore its history)
+            // is reused; the phone gets a fresh key. An ACTIVE card of
+            // another student is still never reassigned.
+            if ($existing !== null && $existing->status === CardStatus::Revoked) {
+                $existing->update([
+                    'student_id' => $pairing->student_id,
+                    'status' => CardStatus::Active,
+                    'kind' => $kind,
+                ]);
+
+                if ($key !== null) {
+                    app(HceCredentialAuth::class)->storeKey($existing, $key, $reader);
+                } else {
+                    // Physical re-pair: a stale key from a previous phone
+                    // shape must not survive.
+                    HceCredentialKey::where('card_id', $existing->id)->delete();
+                }
+
+                return $this->consume($pairing, $reader, $existing, rekeyed: false);
             }
 
             if ($existing !== null) {

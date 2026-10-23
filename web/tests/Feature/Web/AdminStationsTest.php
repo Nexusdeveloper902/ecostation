@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Web;
 
+use App\Models\PresenceEvent;
 use App\Models\Reader;
 use App\Models\User;
 use App\Services\DeviceAuth\DeviceRequestSigner;
@@ -116,6 +117,34 @@ class AdminStationsTest extends TestCase
             ->assertRedirect(route('admin.stations'));
 
         $this->assertDatabaseMissing('readers', ['id' => $reader->id]);
+    }
+
+    #[Test]
+    public function a_station_with_history_cannot_be_deleted_and_is_offered_key_rotation(): void
+    {
+        $reader = $this->reader();
+        PresenceEvent::create([
+            'card_id' => $this->cardOf('Maria González')->id,
+            'reader_id' => $reader->id,
+            'class_id' => $this->cardOf('Maria González')->student->class_id,
+            'occurred_at' => now(),
+        ]);
+
+        // A JSON caller gets the 422-shaped validation verdict; a browser
+        // is sent back to the desk with the same message.
+        $this->actingAs($this->admin())
+            ->deleteJson("/admin/stations/{$reader->id}")
+            ->assertStatus(422)
+            ->assertJsonPath('errors.station.0', fn (string $message): bool => str_contains($message, 'Rotar clave'));
+
+        $this->actingAs($this->admin())
+            ->from(route('admin.stations'))
+            ->delete("/admin/stations/{$reader->id}")
+            ->assertRedirect(route('admin.stations'))
+            ->assertSessionHasErrors('station');
+
+        $this->assertDatabaseHas('readers', ['id' => $reader->id]);
+        $this->assertDatabaseCount('events', 1);
     }
 
     #[Test]

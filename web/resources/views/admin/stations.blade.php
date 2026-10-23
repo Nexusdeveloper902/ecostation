@@ -32,11 +32,15 @@
                             <button type="submit">Rotar clave</button>
                         </form>
 
-                        <form method="POST" action="{{ route('admin.stations.destroy', $station['id']) }}">
-                            @csrf
-                            @method('DELETE')
-                            <button type="submit">Eliminar</button>
-                        </form>
+                        @if ($station['last_event_at'] !== null)
+                            <p>Con historial: rota la clave en lugar de eliminar la estación.</p>
+                        @else
+                            <form method="POST" action="{{ route('admin.stations.destroy', $station['id']) }}">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit">Eliminar</button>
+                            </form>
+                        @endif
                     </td>
                 </tr>
             @empty
