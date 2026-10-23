@@ -15,7 +15,7 @@ class SeederTest extends TestCase
     public function demo_user_is_seeded_in_testing(): void
     {
         $this->seed();
-        $this->assertDatabaseHas('users', ['email' => 'demo@ecostation.test']);
+        $this->assertDatabaseHas('users', ['email' => 'admin@ecostation.test']);
     }
 
     #[Test]

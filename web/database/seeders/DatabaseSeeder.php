@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -20,10 +19,6 @@ class DatabaseSeeder extends Seeder
             return;
         }
 
-        User::factory()->create([
-            'name' => 'Demo',
-            'email' => 'demo@ecostation.test',
-            'password' => 'demo1234',
-        ]);
+        $this->call(DemoSeeder::class);
     }
 }
