@@ -49,12 +49,20 @@ class ScriptsTest extends TestCase
     {
         $run = file_get_contents(base_path('run'));
 
-        $this->assertStringContainsString('php artisan serve --host=0.0.0.0 --port=8000', $run);
-        $this->assertStringContainsString('php artisan realtime:serve', $run);
+        $this->assertStringContainsString('ECOSTATION_LAN', $run);
+        $this->assertStringContainsString('bind_host="127.0.0.1"', $run);
+        $this->assertStringContainsString('php artisan serve --host="$bind_host" --port=8000', $run);
+        $this->assertStringContainsString('php artisan realtime:serve --host="$bind_host" --port="$realtime_port"', $run);
         $this->assertStringContainsString('php artisan schedule:work', $run);
         $this->assertStringContainsString('avahi-publish-service EcoStation _ecostation._tcp 8000 version=1 protocol=1 api=/api', $run);
         $this->assertStringContainsString('scripts/mdns/announce.py --port 8000', $run);
         $this->assertStringContainsString('ECOSTATION_MDNS', $run);
+        $this->assertStringContainsString('0|false|no|off', $run);
+        $this->assertStringContainsString('ECOSTATION_DEBUG', $run);
+        $this->assertStringContainsString('APP_DEBUG="$debug"', $run);
+        $this->assertStringContainsString("config('realtime.port')", $run);
+        $this->assertStringContainsString('kill -0 "$pid"', $run);
+        $this->assertStringContainsString('wait -n', $run);
         $this->assertStringContainsString('trap ', $run);
     }
 }

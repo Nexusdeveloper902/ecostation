@@ -216,6 +216,38 @@ class DeviceHmacAuthTest extends TestCase
     }
 
     #[Test]
+    public function rotating_a_reader_key_invalidates_the_cached_fingerprint_map(): void
+    {
+        $reader = $this->reader();
+        $oldSecret = $this->readerToken();
+
+        $this->signedTap($this->cardUidFor('Maria González'), secret: $oldSecret)->assertOk();
+
+        $newSecret = Str::random(32);
+        $reader->forceFill(['api_key' => $newSecret])->save();
+
+        // The old fingerprint must be unknown on the very next request...
+        $this->signedTap($this->cardUidFor('Carlos Pérez'), secret: $oldSecret)
+            ->assertUnauthorized();
+
+        // ...and the new one authenticates immediately.
+        $this->signedTap($this->cardUidFor('Carlos Pérez'), secret: $newSecret)->assertOk();
+    }
+
+    #[Test]
+    public function the_reader_group_is_rate_limited_per_key_without_weakening_replay_protection(): void
+    {
+        config(['ecostation.device_auth.rate_limit_per_minute' => 2]);
+
+        $this->signedTap($this->cardUidFor('Maria González'))->assertOk();
+        $this->signedTap($this->cardUidFor('Carlos Pérez'))->assertOk();
+
+        // Third valid request inside the window is throttled.
+        $this->signedTap($this->cardUidFor('Ana Martínez'))->assertStatus(429);
+        $this->assertDatabaseCount('events', 2);
+    }
+
+    #[Test]
     public function the_wire_format_is_pinned_for_firmware_interop(): void
     {
         // Golden vector — hardcoded, NOT self-computed: the ESP32 signer

@@ -12,15 +12,50 @@ Uso: ./run <comando>
   test    ejecuta las pruebas (los argumentos pasan a `php artisan test`)
   ci      Pint + pruebas, igual que la integración continua
 
-`serve` publica el servicio _ecostation._tcp en la LAN cuando avahi o
-python3 están disponibles; ECOSTATION_MDNS=0 desactiva ese anuncio.
+`serve` escucha solo en 127.0.0.1 por defecto. Para exponerlo en la LAN
+(estaciones y teléfonos) usa ECOSTATION_LAN=1; en ese modo también se
+publica `_ecostation._tcp` si avahi o python3 están disponibles.
+ECOSTATION_MDNS=0/false/no/off desactiva el anuncio mDNS.
+APP_DEBUG queda en false salvo ECOSTATION_DEBUG=1.
 USO
     exit 2
 }
 
 serve() {
     local pids=()
-    local mdns="${ECOSTATION_MDNS:-1}"
+    local lan=0
+    local debug=false
+    local mdns=0
+    local bind_host="127.0.0.1"
+    local realtime_port
+
+    case "$(printf '%s' "${ECOSTATION_LAN:-0}" | tr '[:upper:]' '[:lower:]')" in
+        1|true|yes|on) lan=1 ;;
+    esac
+
+    if [ "${ECOSTATION_DEBUG:-0}" = "1" ]; then
+        debug=true
+    fi
+
+    # Loopback by default: a dev machine must not expose the dashboard,
+    # feed or reader API to the whole LAN just because `./run serve` ran.
+    if [ "$lan" = "1" ]; then
+        bind_host="0.0.0.0"
+    fi
+
+    # mDNS only makes sense for a LAN-bound service; an explicit value wins.
+    if [ -n "${ECOSTATION_MDNS:-}" ]; then
+        case "$(printf '%s' "$ECOSTATION_MDNS" | tr '[:upper:]' '[:lower:]')" in
+            0|false|no|off) mdns=0 ;;
+            *) mdns=1 ;;
+        esac
+    elif [ "$lan" = "1" ]; then
+        mdns=1
+    fi
+
+    # The echoed WebSocket port comes from the same config the server reads.
+    realtime_port="$(php artisan tinker --execute="echo (int) config('realtime.port');" 2>/dev/null | tr -dc '0-9')"
+    realtime_port="${realtime_port:-8081}"
 
     # Preflight: sin APP_KEY fuerte el feed en vivo firmaría tokens
     # forjables. Se niega antes de levantar ningún proceso.
@@ -34,23 +69,27 @@ serve() {
         trap - EXIT INT TERM
         local pid
         for pid in "${pids[@]:-}"; do
-            [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+            # Only signal processes that are still ours and alive: a PID
+            # reused after an early child exit must never be killed.
+            if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+                kill "$pid" 2>/dev/null || true
+            fi
         done
         wait 2>/dev/null || true
     }
     trap cleanup EXIT INT TERM
 
-    # Los tres procesos del servidor de desarrollo.
-    php artisan serve --host=0.0.0.0 --port=8000 &
+    # APP_DEBUG is opt-in for this dev stack, regardless of .env.
+    APP_DEBUG="$debug" php artisan serve --host="$bind_host" --port=8000 &
     pids+=("$!")
 
-    php artisan realtime:serve &
+    APP_DEBUG="$debug" php artisan realtime:serve --host="$bind_host" --port="$realtime_port" &
     pids+=("$!")
 
-    php artisan schedule:work &
+    APP_DEBUG="$debug" php artisan schedule:work &
     pids+=("$!")
 
-    if [ "$mdns" != "0" ]; then
+    if [ "$mdns" = "1" ]; then
         if command -v avahi-publish-service >/dev/null 2>&1; then
             avahi-publish-service EcoStation _ecostation._tcp 8000 version=1 protocol=1 api=/api &
             pids+=("$!")
@@ -65,16 +104,26 @@ serve() {
             echo "python3 no encontrado: se omite el reanuncio mDNS." >&2
         fi
     else
-        echo "Anuncio mDNS desactivado (ECOSTATION_MDNS=0)."
+        echo "Anuncio mDNS desactivado."
     fi
 
     echo
-    echo "  App:     http://0.0.0.0:8000"
-    echo "  En vivo: ws://0.0.0.0:${REALTIME_PORT:-8081}"
+    if [ "$lan" = "1" ]; then
+        echo "  App:     http://0.0.0.0:8000 (LAN)"
+    else
+        echo "  App:     http://127.0.0.1:8000 (solo local; ECOSTATION_LAN=1 para la LAN)"
+    fi
+    echo "  En vivo: ws://${bind_host}:${realtime_port}"
     echo "  Detener: Ctrl+C"
     echo
 
-    wait
+    # One dead child (crash, port taken, bad config) tears the whole stack
+    # down instead of leaving a half-running server behind.
+    local status=0
+    wait -n || status=$?
+    [ "$status" -eq 0 ] && status=1
+    echo "Un proceso del stack terminó; cerrando los demás." >&2
+    exit "$status"
 }
 
 case "${1:-}" in

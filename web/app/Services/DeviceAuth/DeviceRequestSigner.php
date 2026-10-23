@@ -42,9 +42,7 @@ class DeviceRequestSigner
             return ['ok' => false, 'reason' => 'malformed'];
         }
 
-        $reader = Reader::all()->first(
-            fn (Reader $r): bool => hash_equals(self::fingerprint($r->api_key), strtolower($kid))
-        );
+        $reader = $this->readerForFingerprint(strtolower($kid));
 
         if ($reader === null) {
             return ['ok' => false, 'reason' => 'unknown'];
@@ -68,6 +66,23 @@ class DeviceRequestSigner
         }
 
         return ['ok' => true, 'reader' => $reader];
+    }
+
+    /**
+     * Fingerprint => reader map, cached because verification used to load
+     * every reader row on every request. Reader model events invalidate it
+     * on create/rotate/delete.
+     */
+    private function readerForFingerprint(string $kid): ?Reader
+    {
+        /** @var array<string, Reader> $map */
+        $map = Cache::rememberForever(Reader::AUTH_MAP_CACHE_KEY, function (): array {
+            return Reader::query()->get()->mapWithKeys(
+                fn (Reader $reader): array => [self::fingerprint((string) $reader->api_key) => $reader],
+            )->all();
+        });
+
+        return $map[$kid] ?? null;
     }
 
     /** Sign a request (legitimate devices, bench curl, tests). */

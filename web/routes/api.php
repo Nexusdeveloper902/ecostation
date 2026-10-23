@@ -44,8 +44,8 @@ Route::prefix('v1')->group(function () {
             ->name('api.v1.realtime.token');
     });
 
-    // Station devices (Pulse-HMAC).
-    Route::middleware('reader.auth')->group(function () {
+    // Station devices (Pulse-HMAC), with a modest per-key flood guard.
+    Route::middleware(['reader.auth', 'throttle:reader'])->group(function () {
         Route::post('/events/tap', [TapEventController::class, 'store'])->name('api.v1.events.tap');
         Route::post('/recycling/classify', [RecyclingClassificationController::class, 'store'])
             ->name('api.v1.recycling.classify');

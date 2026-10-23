@@ -16,7 +16,10 @@ return [
         'classify_window_seconds' => (int) env('RECYCLING_CLASSIFY_WINDOW', 600),
     ],
     'leaderboard' => ['top' => 10],
-    'device_auth' => ['allow_legacy_bearer' => env('DEVICE_AUTH_ALLOW_LEGACY_BEARER', true)],
+    'device_auth' => [
+        'allow_legacy_bearer' => env('DEVICE_AUTH_ALLOW_LEGACY_BEARER', true),
+        'rate_limit_per_minute' => (int) env('DEVICE_AUTH_RATE_LIMIT', 60),
+    ],
     'classifier' => [
         'driver' => env('RECYCLING_CLASSIFIER_DRIVER', 'stub'),
         'deepseek' => [
