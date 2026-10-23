@@ -34,6 +34,9 @@ return [
     // API del estudiante (app Android)
     'student_not_linked' => 'Esta cuenta no está vinculada a un estudiante.',
 
+    // Fotos y privacidad
+    'deposit_photo_missing' => 'La foto del depósito no está disponible.',
+
     // Endpoint de emparejamiento de tarjetas
     'pairing_no_active_session' => 'No hay ninguna sesión de emparejamiento activa',
     'pairing_card_already_paired' => 'La tarjeta ya está emparejada',

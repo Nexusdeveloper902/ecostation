@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Web\AuthController;
+use App\Http\Controllers\Web\DepositPhotoController;
 use App\Http\Controllers\Web\PasswordController;
 use App\Support\HomeTarget;
 use Illuminate\Http\Request;
@@ -42,4 +43,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/station', fn () => view('station'))
         ->middleware('role:station')
         ->name('station');
+
+    // Deposit photos: staff only, scoped by StudentScope inside.
+    Route::get('/deposits/{deposit}/photo', [DepositPhotoController::class, 'show'])
+        ->middleware('role:admin,teacher')
+        ->name('deposits.photo');
 });
