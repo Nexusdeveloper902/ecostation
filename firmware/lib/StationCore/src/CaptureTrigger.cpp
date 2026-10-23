@@ -99,6 +99,25 @@ CaptureCommand TerminalCaptureTrigger::handleLine(const std::string& raw) {
         return {};
     }
 
+    // Server address: "s" shows the current one, "s -" clears the pinned
+    // one, "s <url>" pins it. Exactly one token — "s a b" is not an
+    // address, and handing it on would silently clear the server.
+    if (line == "s" || line == "S") {
+        return {CaptureCommand::ServerUrl, ""};
+    }
+    if (line.size() >= 2 && (line[0] == 's' || line[0] == 'S') && line[1] == ' ') {
+        std::string url = line.substr(2);
+        size_t ub = url.find_first_not_of(" \t");
+        size_t ue = url.find_last_not_of(" \t");
+        if (ub != std::string::npos) {
+            url = url.substr(ub, ue - ub + 1);
+        }
+        if (!url.empty() && url.find_first_of(" \t") == std::string::npos) {
+            return {CaptureCommand::ServerUrl, url};
+        }
+        return {};
+    }
+
     return {};  // unknown line — NOT a capture command. On a device that
                 // shares the serial line with a mode-password console
                 // (reader + station), the dispatcher hands this line to

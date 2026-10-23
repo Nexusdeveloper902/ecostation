@@ -17,6 +17,7 @@ void runModeTests();
 void runDebounceTests();
 void runConsoleTests();
 void runCaptureTriggerTests();
+void runEndpointTests();
 
 // Compartido por todas las pruebas (Unity llama estas funciones en cada RUN_TEST).
 void setUp() {}
@@ -35,6 +36,7 @@ int main() {
     runDebounceTests();        // antirrebote de tarjeta + patrones LED
     runConsoleTests();         // consola serial (LineBuffer + ModeConsole)
     runCaptureTriggerTests();  // disparador de captura (disciplina de línea + enfriamiento)
+    runEndpointTests();        // dirección del servidor (mDNS + manual)
 
     return UNITY_END();
 }

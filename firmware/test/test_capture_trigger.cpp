@@ -286,6 +286,21 @@ void feedLine_leaves_no_residue_after_an_unknown_line() {
     TEST_ASSERT_EQUAL_INT(CaptureCommand::Capture, t.feedLine("").kind);
 }
 
+// --- Task 4: the `s` console command --------------------------------------
+// "s" shows the current address, "s -" clears the pinned one, and
+// "s <url>" pins a manual one — two tokens is not an address.
+
+static void server_line_parses() {
+    TerminalCaptureTrigger t([]() { return 0UL; });
+    CaptureCommand c = t.feedLine("s 192.168.1.50:8000");
+    TEST_ASSERT_EQUAL(CaptureCommand::ServerUrl, c.kind);
+    TEST_ASSERT_EQUAL_STRING("192.168.1.50:8000", c.arg.c_str());
+    TEST_ASSERT_EQUAL_STRING("", t.feedLine("s").arg.c_str());
+    TEST_ASSERT_EQUAL(CaptureCommand::ServerUrl, t.feedLine("s").kind);
+    TEST_ASSERT_EQUAL_STRING("-", t.feedLine("s -").arg.c_str());
+    TEST_ASSERT_EQUAL(CaptureCommand::None, t.feedLine("s a b").kind);
+}
+
 void runCaptureTriggerTests() {
     RUN_TEST(enter_line_triggers_capture);
     RUN_TEST(associate_line_parses_the_uid);
@@ -306,4 +321,5 @@ void runCaptureTriggerTests() {
     RUN_TEST(feedLine_routes_command_lines_to_the_trigger);
     RUN_TEST(feedLine_hands_non_command_lines_to_the_console);
     RUN_TEST(feedLine_leaves_no_residue_after_an_unknown_line);
+    RUN_TEST(server_line_parses);
 }

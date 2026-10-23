@@ -12,6 +12,7 @@
  *   "a <credential_uid>"  → ASSOCIATE   — resolve the last capture with a card
  *   "e <event_id>"        → ARM_EVENT   — card-first classify mode
  *   "c"                   → LOCAL_ONLY  — capture without uploading (dev)
+ *   "s [<url>|-]"         → SERVER_URL   — show/pin/clear the server address
  *
  * Multi-fire protection (spec: "Enter must not multi-fire on key-repeat
  * / buffered input"): the LineBuffer discipline turns a pasted char
@@ -41,6 +42,7 @@ struct CaptureCommand {
         Associate,      // "a <uid>": resolve the last capture with this card
         ArmEvent,       // "e <id>": next capture classifies this event
         LocalOnly,      // "c": capture without uploading (dev)
+        ServerUrl,      // "s [<url>|-]": show/pin/clear the server address
     };
 
     // Explicit constructors: the Arduino toolchain compiles C++11, where
@@ -51,7 +53,8 @@ struct CaptureCommand {
     CaptureCommand(Kind k, std::string a) : kind(k), arg(std::move(a)) {}
 
     Kind kind = None;
-    std::string arg;   // uid for Associate, decimal event id for ArmEvent
+    std::string arg;   // uid for Associate, decimal event id for ArmEvent,
+                       // "" (show) / "-" (clear) / url for ServerUrl
 };
 
 class CaptureTrigger {
