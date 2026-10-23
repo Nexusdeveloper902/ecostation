@@ -26,6 +26,9 @@ class AdminRosterTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Override explícito de pruebas: la creación es determinista y el
+        // valor compartido sigue estando prohibido como clave nueva.
+        config(['ecostation.student_initial_password' => 'password']);
         $this->seedDemo();
     }
 

@@ -26,7 +26,7 @@ class SettingsService
         'photos.retention_days' => ['ecostation.photos.retention_days', 'required|integer|between:1,365'],
         'pairing.window_seconds' => ['ecostation.pairing_window_seconds', 'required|integer|between:10,600'],
         'accounts.student_email_domain' => ['ecostation.student_email_domain', 'required|string|max:190'],
-        'accounts.student_initial_password' => ['ecostation.student_initial_password', 'required|string|min:4|max:120'],
+        'accounts.student_initial_password' => ['ecostation.student_initial_password', 'nullable|string|min:4|max:120'],
     ];
 
     private const INT_KEYS = [
@@ -118,9 +118,15 @@ class SettingsService
         return (string) $this->get('accounts.student_email_domain');
     }
 
-    public function studentInitialPassword(): string
+    /**
+     * Override opcional. `null` significa "genera una clave aleatoria por
+     * estudiante"; nunca se degrada a la vieja contraseña compartida.
+     */
+    public function studentInitialPassword(): ?string
     {
-        return (string) $this->get('accounts.student_initial_password');
+        $value = $this->get('accounts.student_initial_password');
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     private function default(string $key): mixed

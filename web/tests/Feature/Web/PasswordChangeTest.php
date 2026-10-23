@@ -23,6 +23,8 @@ class PasswordChangeTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // La demo usa esta clave compartida; la rotación debe rechazarla.
+        config(['ecostation.student_initial_password' => 'password']);
         $this->seedDemo();
     }
 

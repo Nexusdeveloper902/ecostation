@@ -6,7 +6,11 @@ return [
     'photos' => ['retention_days' => 30],
     'pairing_window_seconds' => (int) env('PAIRING_WINDOW_SECONDS', 45),
     'student_email_domain' => 'ecostation.test',
-    'student_initial_password' => 'password',
+    // Sin valor: cada estudiante recibe una contraseña aleatoria propia.
+    // Solo pruebas/despliegues controlados fijan una clave compartida.
+    'student_initial_password' => env('STUDENT_INITIAL_PASSWORD'),
+    // La semilla de demostración solo corre en producción con permiso explícito.
+    'demo_seed' => env('ECOSTATION_DEMO') === '1',
     'capture' => [
         'ttl_seconds' => (int) env('RECYCLING_CAPTURE_TTL', 300),
         'classify_window_seconds' => (int) env('RECYCLING_CLASSIFY_WINDOW', 600),

@@ -11,6 +11,17 @@
         </p>
     @endif
 
+    @if (session('account_passwords'))
+        <div role="status">
+            <p>Cuentas creadas en la importación (la clave se muestra una sola vez):</p>
+            <ul>
+                @foreach (session('account_passwords') as $credential)
+                    <li>{{ $credential['email'] }} · {{ $credential['password'] }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
     <table>
         <thead>
             <tr>

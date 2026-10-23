@@ -52,21 +52,21 @@ class StudentController extends Controller
             ]);
         }
 
-        [$student, $account] = DB::transaction(function () use ($data): array {
+        [$student, $provisioned] = DB::transaction(function () use ($data): array {
             $student = Student::create([
                 'name' => trim((string) $data['name']),
                 'class_id' => (int) $data['class_id'],
             ]);
 
-            $account = $this->accounts->provisionFor($student)['user'];
-
-            return [$student, $account];
+            return [$student, $this->accounts->provisionFor($student)];
         });
+
+        $account = $provisioned['user'];
 
         return redirect()->route('admin.students')->with([
             'status' => 'Estudiante creado: '.$student->name,
             'account_email' => $account->email,
-            'account_password' => (string) settings()->studentInitialPassword(),
+            'account_password' => $provisioned['password'],
         ]);
     }
 
@@ -93,7 +93,9 @@ class StudentController extends Controller
                 ]);
             }
 
-            [$creados, $omitidos] = DB::transaction(function () use ($handle, $columns): array {
+            $credentials = [];
+
+            [$creados, $omitidos] = DB::transaction(function () use ($handle, $columns, &$credentials): array {
                 $creados = 0;
                 $omitidos = 0;
                 $students = [];
@@ -138,7 +140,7 @@ class StudentController extends Controller
                 }
 
                 if ($students !== []) {
-                    $this->accounts->provisionMany(collect($students));
+                    $credentials = $this->accounts->provisionMany(collect($students));
                 }
 
                 return [$creados, $omitidos];
@@ -151,6 +153,10 @@ class StudentController extends Controller
             'status' => "Importación terminada: {$creados} creados, {$omitidos} omitidos.",
             'creados' => $creados,
             'omitidos' => $omitidos,
+            'account_passwords' => array_values(array_filter(
+                $credentials,
+                fn (array $row): bool => $row['password'] !== '',
+            )),
         ]);
     }
 

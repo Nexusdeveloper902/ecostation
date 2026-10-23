@@ -76,7 +76,7 @@ class AuthTokenController extends Controller
                 'min:8',
                 'confirmed',
                 'different:current_password',
-                Rule::notIn([settings()->studentInitialPassword()]),
+                Rule::notIn(array_filter([settings()->studentInitialPassword()])),
             ],
         ]);
 

@@ -18,7 +18,8 @@ use Illuminate\Support\Str;
  *
  * Convention (the demo seed keeps it):
  *   email    = {ascii-lower-first-name}@<settings student email domain>
- *   password = <settings initial password>
+ *   password = aleatoria por estudiante (override explícito solo en
+ *              pruebas/despliegues controlados)
  *   flag     = must_change_password=true (forced rotation on first login)
  *
  * Collisions get a numeric suffix (maria@…, maria2@…): the first-try
@@ -32,23 +33,26 @@ class StudentAccountService
      * Provision (or return the existing) account for a student.
      *
      * Idempotent: an existing account is never re-issued a temporary
-     * password.
+     * password. The generated password is returned ONCE to the caller
+     * that created the account (the roster flashes it).
      *
-     * @return array{user: User, already: bool}
+     * @return array{user: User, already: bool, password: ?string}
      */
     public function provisionFor(Student $student): array
     {
         $existing = $student->account()->first();
 
         if ($existing !== null) {
-            return ['user' => $existing, 'already' => true];
+            return ['user' => $existing, 'already' => true, 'password' => null];
         }
 
+        $password = $this->initialPassword();
+
         try {
-            $user = User::create([
+            $user = User::forceCreate([
                 'name' => $student->name,
                 'email' => $this->emailForName($student->name),
-                'password' => (string) settings()->studentInitialPassword(),
+                'password' => $password,
                 'role' => UserRole::Student->value,
                 'student_id' => $student->id,
                 'must_change_password' => true,
@@ -66,18 +70,20 @@ class StudentAccountService
                 throw $e;
             }
 
-            return ['user' => $winner, 'already' => true];
+            return ['user' => $winner, 'already' => true, 'password' => null];
         }
 
-        return ['user' => $user->fresh() ?? $user, 'already' => false];
+        return ['user' => $user->fresh() ?? $user, 'already' => false, 'password' => $password];
     }
 
     /**
      * Provision a whole import batch with ONE pre-read: suffixes allocate
-     * against an in-memory set, so big imports stay linear.
+     * against an in-memory set, so big imports stay linear. Each new
+     * student gets its own generated password, returned for the one-time
+     * import flash.
      *
      * @param  Collection<int, Student>  $students
-     * @return array<int, string> student_id => email
+     * @return array<int, array{email: string, password: string}> student_id => credentials
      */
     public function provisionMany(Collection $students): array
     {
@@ -89,13 +95,13 @@ class StudentAccountService
             ->flip()
             ->all();
 
-        $emails = [];
+        $credentials = [];
 
         foreach ($students as $student) {
             $existing = $student->account()->first();
 
             if ($existing !== null) {
-                $emails[$student->id] = $existing->email;
+                $credentials[$student->id] = ['email' => $existing->email, 'password' => ''];
                 $taken[$existing->email] = true;
 
                 continue;
@@ -103,12 +109,13 @@ class StudentAccountService
 
             $email = $this->emailForName($student->name, $taken);
             $taken[$email] = true;
+            $password = $this->initialPassword();
 
             try {
-                $user = User::create([
+                User::forceCreate([
                     'name' => $student->name,
                     'email' => $email,
-                    'password' => (string) settings()->studentInitialPassword(),
+                    'password' => $password,
                     'role' => UserRole::Student->value,
                     'student_id' => $student->id,
                     'must_change_password' => true,
@@ -122,13 +129,23 @@ class StudentAccountService
 
                 $user = $this->provisionFor($student->refresh())['user'];
                 $email = $user->email;
+                $password = '';
                 $taken[$email] = true;
             }
 
-            $emails[$student->id] = $email;
+            $credentials[$student->id] = ['email' => $email, 'password' => $password];
         }
 
-        return $emails;
+        return $credentials;
+    }
+
+    /**
+     * The explicit override when configured; otherwise a fresh random
+     * password, never the old shared demo secret.
+     */
+    private function initialPassword(): string
+    {
+        return settings()->studentInitialPassword() ?? Str::password(12);
     }
 
     /**
