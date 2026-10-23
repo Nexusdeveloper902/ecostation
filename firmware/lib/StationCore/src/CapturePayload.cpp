@@ -7,7 +7,7 @@ namespace EcoStation {
 const char* CapturePayload::boundary() {
     // Literal chosen to be absent from JPEG entropy; fixed so payloads
     // and the Content-Type header can never disagree.
-    return "----PresenceCamBoundary7C4F1A";
+    return "----EcoStationCamBoundary7C4F1A";
 }
 
 std::string CapturePayload::contentType() {

@@ -2,11 +2,11 @@
  * CoreTypes.h — shared value types of the reader firmware.
  * CoreTypes.h — tipos compartidos del firmware del lector.
  *
- * PresenceCore is deliberately FREE of Arduino headers so every rule in
+ * StationCore is deliberately FREE of Arduino headers so every rule in
  * this library can be unit-tested on the host (PlatformIO native env)
- * and reused by both the RC522 and the mock reader build.
- * PresenceCore no incluye cabeceras de Arduino para que toda esta lógica
- * sea testeable en el host y reutilizable por el lector RC522 y el simulado.
+ * and reused by the station image.
+ * StationCore no incluye cabeceras de Arduino para que toda esta lógica
+ * sea testeable en el host y reutilizable por la imagen de la estación.
  */
 #pragma once
 

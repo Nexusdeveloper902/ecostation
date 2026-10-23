@@ -1,13 +1,21 @@
-// Plantilla temporal: el programa de la estación llega en la Tarea 8.
+/**
+ * main.cpp — ESP32-CAM STATION entry point (env `esp32cam`).
+ *
+ * The station (camera + RC522 + presence + capture + feedback + network
+ * as ONE device) lives in station.h/.cpp; this file only constructs it
+ * and delegates setup()/loop(). No business logic here.
+ */
 #include <Arduino.h>
-#include "config.h"
-#include "StationFlow.h"
-#include "EspApiClient.h"
-#include "WifiService.h"
-#include "EcoStationDiscovery.h"
-#include "StationLed.h"
-#include "Rc522NfcReader.h"
 
-void setup() {}
+#include "station.h"
 
-void loop() {}
+static EcoStation::Station station;
+
+void setup() {
+    station.begin();
+}
+
+void loop() {
+    station.update();
+    delay(1);
+}

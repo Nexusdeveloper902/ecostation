@@ -47,9 +47,8 @@
 // --- LED diagnostics quick reference (full table in docs/HARDWARE_SETUP.md) -
 //   white flash LED solid ON → pre-2026-09-07 build or RC522 RST still
 //       wired to GPIO4 (it must be strapped to 3V3);
-//   red LED SOLID ON → either the esp32dev (reader) image was flashed on
-//       the CAM board (that image idles GPIO33 LOW for a buzzer) or the
-//       board is an inverted-polarity clone → PIN_STATION_LED_ACTIVE_LOW 0;
+//   red LED SOLID ON → the board is likely an inverted-polarity clone →
+//       set PIN_STATION_LED_ACTIVE_LOW to 0;
 //   red LED short blips (1×/2×/3× per 2 s) → NORMAL heartbeat grammar,
 //       not a fault (1 = operating, 2 = pairing, 3 = degraded).
 
