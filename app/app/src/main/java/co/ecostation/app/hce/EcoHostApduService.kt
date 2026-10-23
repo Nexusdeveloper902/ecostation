@@ -2,6 +2,7 @@ package co.ecostation.app.hce
 
 import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
+import co.ecostation.app.store.AppSettings
 
 /**
  * Android HCE endpoint for the EcoStation credential.
@@ -11,7 +12,13 @@ import android.os.Bundle
  */
 class EcoHostApduService : HostApduService() {
 
-    private val responder = HceResponder(CredentialRuntime.keys, CredentialRuntime.enrollment)
+    private val settings by lazy { AppSettings(this) }
+
+    private val responder = HceResponder(
+        CredentialRuntime.keys,
+        CredentialRuntime.enrollment,
+        onAuthenticated = { settings.linkPending = false },
+    )
 
     /**
      * Resolve this device's credential before any reader can ask for it. The
@@ -33,7 +40,7 @@ class EcoHostApduService : HostApduService() {
 
     override fun onDeactivated(reason: Int) {
         responder.deactivate()
-        HceEvents.emit(if (reason == DEACTIVATION_LINK_LOSS) "Link lost (phone removed)" else "Deactivated")
+        HceEvents.emit(if (reason == DEACTIVATION_LINK_LOSS) "Enlace perdido (teléfono retirado)" else "Desactivado")
     }
 }
 

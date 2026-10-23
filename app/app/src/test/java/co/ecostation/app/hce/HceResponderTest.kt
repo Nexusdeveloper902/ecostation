@@ -8,7 +8,7 @@ import org.junit.Test
  * [EcoHostApduService.processCommandApdu] runs, minus the Service shell.
  * These tests walk the whole path a reader drives:
  * APDU → session → credential id → nonce → key lookup → HMAC → response,
- * plus deactivation and the pairing-time ENROLL.
+ * plus deactivation and safe pairing-time ENROLL.
  *
  * The expected MACs are literals computed outside this code (Python hmac),
  * so the implementation never grades itself.
@@ -28,7 +28,8 @@ class HceResponderTest {
         keys: CredentialKeyStore,
         window: EnrollmentWindow = EnrollmentWindow(),
         cred: String = ApduProtocolTest.VECTOR_CRED,
-    ) = HceResponder(keys, window, credentialId = { cred }, clockMs = { now })
+        authenticated: (() -> Unit)? = null,
+    ) = HceResponder(keys, window, credentialId = { cred }, clockMs = { now }, onAuthenticated = authenticated)
 
     @Test
     fun a_full_tap_answers_with_this_credentials_own_key() {
@@ -39,8 +40,8 @@ class HceResponderTest {
         assertTrue(r.selected)
         val resp = r.respond(challenge(ApduProtocolTest.VECTOR_NONCE))
         assertArrayEquals(hex(ApduProtocolTest.VECTOR_RESPONSE), resp)
-        assertEquals("SELECT AID -> 9000", r.describe(select, hex("9000")))
-        assertEquals("CHALLENGE -> 9000", r.describe(challenge(ApduProtocolTest.VECTOR_NONCE), resp))
+        assertEquals("SELECCIONAR AID -> 9000", r.describe(select, hex("9000")))
+        assertEquals("RETO -> 9000", r.describe(challenge(ApduProtocolTest.VECTOR_NONCE), resp))
     }
 
     @Test
@@ -75,7 +76,7 @@ class HceResponderTest {
         r.respond(select)
         val resp = r.respond(challenge(ApduProtocolTest.VECTOR_NONCE))
         assertArrayEquals(hex("6A88"), resp)
-        assertEquals("CHALLENGE -> no key", r.describe(challenge(ApduProtocolTest.VECTOR_NONCE), resp))
+        assertEquals("RETO -> sin llave", r.describe(challenge(ApduProtocolTest.VECTOR_NONCE), resp))
     }
 
     @Test
@@ -91,37 +92,97 @@ class HceResponderTest {
     }
 
     @Test
-    fun linking_provisions_then_hands_the_same_key_to_one_enroll() {
+    fun a_successful_challenge_notifies_so_the_ui_can_clear_llave_enviada() {
+        var authenticated = 0
+        val keys = InMemoryCredentialKeyStore().apply { put(ApduProtocolTest.VECTOR_CRED, vectorKey) }
+        val r = responder(keys, authenticated = { authenticated++ })
+        r.respond(select)
+        r.respond(challenge(ApduProtocolTest.VECTOR_NONCE))
+        assertEquals(1, authenticated)
+        r.respond(challenge("fedcba9876543210"))
+        assertEquals(2, authenticated)
+
+        // A failed CHALLENGE must not claim the link is verified.
+        val empty = responder(InMemoryCredentialKeyStore(), authenticated = { authenticated++ })
+        empty.respond(select)
+        empty.respond(challenge(ApduProtocolTest.VECTOR_NONCE))
+        assertEquals(2, authenticated)
+    }
+
+    @Test
+    fun enroll_adopts_the_new_key_and_the_old_key_kept_working_until_then() {
         val keys = InMemoryCredentialKeyStore()
         val window = EnrollmentWindow(ttlMs = 60_000)
         val cred = ApduProtocolTest.VECTOR_CRED
+        val oldKey = ByteArray(32) { 0x11 }
+        val newKey = ByteArray(32) { 0x22 }
+        keys.put(cred, oldKey)
 
-        // What CredentialRuntime.beginEnrollment() does, with the fixture store.
-        val raw = keys.provision(cred)
-        window.open(cred, raw, now)
-        val provisioned = raw.copyOf()
-        raw.fill(0)
+        // What CredentialRuntime.beginEnrollment() does: only the window, no import.
+        window.open(cred, newKey, now)
 
         val r = responder(keys, window)
         r.respond(select)
-        val chal = r.respond(challenge(ApduProtocolTest.VECTOR_NONCE))
-        assertEquals(51, chal.size)
-        val enrolled = r.respond(enroll)
-        assertEquals("ENROLL -> 9000", r.describe(enroll, enrolled))
+        // Until ENROLL, the OLD key still answers: a cancelled link is harmless.
+        val before = r.respond(challenge(ApduProtocolTest.VECTOR_NONCE)).sliceArray(17 until 49)
+        val oldMac = InMemoryCredentialKeyStore().apply { put(cred, oldKey) }
+            .mac(cred, ApduProtocol.challengeMessage(cred, hex(ApduProtocolTest.VECTOR_NONCE)))
+        assertArrayEquals(oldMac, before)
 
-        // The handed-over key is the stored key: the MAC the reader relayed
-        // at the same tap verifies under it (the backend's pairing check).
-        val key = enrolled.sliceArray(0 until 32)
-        assertArrayEquals(provisioned, key)
-        val probe = InMemoryCredentialKeyStore().apply { put(cred, key) }
-        assertArrayEquals(
-            probe.mac(cred, ApduProtocol.challengeMessage(cred, hex(ApduProtocolTest.VECTOR_NONCE))),
-            chal.sliceArray(17 until 49)
-        )
+        val enrolled = r.respond(enroll)
+        assertEquals("ENROLAR -> 9000", r.describe(enroll, enrolled))
+        assertArrayEquals(newKey, enrolled.sliceArray(0 until 32))
+
+        // The store adopted the new key; the next CHALLENGE uses it.
+        val after = r.respond(challenge(ApduProtocolTest.VECTOR_NONCE)).sliceArray(17 until 49)
+        val newMac = InMemoryCredentialKeyStore().apply { put(cred, newKey) }
+            .mac(cred, ApduProtocol.challengeMessage(cred, hex(ApduProtocolTest.VECTOR_NONCE)))
+        assertArrayEquals(newMac, after)
+        assertFalse(before.contentEquals(after))
 
         // One release only.
         assertArrayEquals(hex("6985"), r.respond(enroll))
-        assertEquals("ENROLL -> error", r.describe(enroll, hex("6985")))
+        assertEquals("ENROLAR -> error", r.describe(enroll, hex("6985")))
+    }
+
+    @Test
+    fun cancelling_the_window_leaves_the_old_key_intact() {
+        val keys = InMemoryCredentialKeyStore()
+        val cred = ApduProtocolTest.VECTOR_CRED
+        val oldKey = ByteArray(32) { 0x33 }
+        keys.put(cred, oldKey)
+        val window = EnrollmentWindow().apply { open(cred, ByteArray(32) { 0x44 }, now) }
+        window.close()
+
+        val r = responder(keys, window)
+        r.respond(select)
+        assertArrayEquals(
+            InMemoryCredentialKeyStore().apply { put(cred, oldKey) }
+                .mac(cred, ApduProtocol.challengeMessage(cred, hex(ApduProtocolTest.VECTOR_NONCE))),
+            r.respond(challenge(ApduProtocolTest.VECTOR_NONCE)).sliceArray(17 until 49),
+        )
+    }
+
+    @Test
+    fun a_store_that_refuses_the_import_answers_6985_and_keeps_the_old_key() {
+        val cred = ApduProtocolTest.VECTOR_CRED
+        val oldKey = ByteArray(32) { 0x55 }
+        val keys = InMemoryCredentialKeyStore().apply {
+            put(cred, oldKey)
+            adoptResult = false
+        }
+        val window = EnrollmentWindow().apply { open(cred, ByteArray(32) { 0x66 }, now) }
+
+        val r = responder(keys, window)
+        r.respond(select)
+        assertArrayEquals(hex("6985"), r.respond(enroll))
+        assertEquals("ENROLAR -> error", r.describe(enroll, hex("6985")))
+        // The failed adoption did not touch the working key.
+        assertArrayEquals(
+            InMemoryCredentialKeyStore().apply { put(cred, oldKey) }
+                .mac(cred, ApduProtocol.challengeMessage(cred, hex(ApduProtocolTest.VECTOR_NONCE))),
+            r.respond(challenge(ApduProtocolTest.VECTOR_NONCE)).sliceArray(17 until 49),
+        )
     }
 
     @Test
@@ -129,8 +190,8 @@ class HceResponderTest {
         val keys = InMemoryCredentialKeyStore()
         val cred = ApduProtocolTest.VECTOR_CRED
         val first = keys.provision(cred)
-        val second = keys.provision(cred)
-        assertFalse(first.contentEquals(second))
+        val second = ByteArray(32) { 0x77 }
+        assertTrue(keys.adopt(cred, second))
 
         val r = responder(keys)
         r.respond(select)

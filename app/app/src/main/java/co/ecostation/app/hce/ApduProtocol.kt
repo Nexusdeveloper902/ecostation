@@ -102,6 +102,11 @@ object ApduProtocol {
     /**
      * ENROLL response: key(32) + 9000, released once from [window], else
      * `6985`. Accepts `80 20 00 00 [Le]` with no data field.
+     *
+     * [onReleased] is the store's last chance to adopt the key before the
+     * bytes reach the reader. If it returns false the response is `6985` and
+     * the data is wiped: the old key was never touched, so the phone keeps
+     * working and the failed link is visible. Null keeps the bench behaviour.
      */
     fun processEnroll(
         cmd: ByteArray,
@@ -109,28 +114,37 @@ object ApduProtocol {
         credentialId: String,
         window: EnrollmentWindow,
         nowMs: Long,
+        onReleased: ((ByteArray) -> Boolean)? = null,
     ): ByteArray {
         if (!session.selected) return SW_CONDITIONS
         if (cmd.size !in 4..5) return SW_WRONG_LENGTH
         val key = window.release(credentialId, nowMs) ?: return SW_CONDITIONS
         return try {
-            key + SW_OK
+            if (onReleased != null && !onReleased(key)) {
+                SW_CONDITIONS
+            } else {
+                key + SW_OK
+            }
         } finally {
             key.fill(0)
         }
     }
 
     /**
-     * Pure formatter for the app's "HCE routing" verdict (see
-     * MainActivity.renderRouting). Kept here — not in the Activity — so
-     * the wording is unit-pinned: the bench reads this line as the
-     * live answer to "would a reader's SELECT reach our service?".
+     * Pure formatter for the app's "Enrutado del AID" verdict (see
+     * MainActivity.renderDiagnostics). Kept here — not in the Activity — so
+     * the wording is unit-pinned: the bench reads this line as the live
+     * answer to "would a reader's SELECT reach our service?".
      * nulls = the OS gave no answer (adapter gone / API threw before).
      */
     fun routingReport(isDefault: Boolean?, aids: List<String>?): String {
-        if (isDefault == null || aids == null) return "UNKNOWN — no NFC adapter answer"
-        val aidLine = if (aids.isEmpty()) "no AIDs registered?!" else aids.joinToString(",")
-        return if (isDefault) "ROUTED (default for $aidLine)" else "NOT ROUTED for $aidLine — reinstall the app / check conflicting HCE apps"
+        if (isDefault == null || aids == null) return "DESCONOCIDO — sin respuesta del adaptador NFC"
+        val aidLine = if (aids.isEmpty()) "¿no hay AID registrado?" else aids.joinToString(",")
+        return if (isDefault) {
+            "ENRUTADO (predeterminado para $aidLine)"
+        } else {
+            "NO ENRUTADO para $aidLine — reinstala la app / revisa apps HCE en conflicto"
+        }
     }
 
     /** Dispatches one command APDU. Never throws: malformed input -> status word. */
@@ -141,6 +155,7 @@ object ApduProtocol {
         keys: CredentialKeyStore,
         window: EnrollmentWindow,
         nowMs: Long,
+        onReleased: ((ByteArray) -> Boolean)? = null,
     ): ByteArray {
         if (cmd.size < 4) return SW_WRONG_LENGTH
         return when (cmd[0]) {
@@ -150,7 +165,7 @@ object ApduProtocol {
             }
             CLA_AUTH -> when (cmd[1]) {
                 INS_CHALLENGE -> processChallenge(cmd, session, credentialId, keys)
-                INS_ENROLL -> processEnroll(cmd, session, credentialId, window, nowMs)
+                INS_ENROLL -> processEnroll(cmd, session, credentialId, window, nowMs, onReleased)
                 else -> SW_INS_UNKNOWN
             }
             else -> SW_CLA_UNKNOWN

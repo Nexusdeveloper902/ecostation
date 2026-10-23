@@ -43,13 +43,13 @@ class ApduProtocolTest {
     @Test
     fun routing_report_wording_is_pinned() {
         assertEquals(
-            "ROUTED (default for F0010203040506)",
+            "ENRUTADO (predeterminado para F0010203040506)",
             ApduProtocol.routingReport(true, listOf("F0010203040506"))
         )
-        assertTrue(ApduProtocol.routingReport(false, listOf("F0010203040506")).startsWith("NOT ROUTED"))
-        assertTrue(ApduProtocol.routingReport(null, null).startsWith("UNKNOWN"))
+        assertTrue(ApduProtocol.routingReport(false, listOf("F0010203040506")).startsWith("NO ENRUTADO"))
+        assertTrue(ApduProtocol.routingReport(null, null).startsWith("DESCONOCIDO"))
         // Empty registry is still a verdict, not UNKNOWN.
-        assertTrue(ApduProtocol.routingReport(true, emptyList()).startsWith("ROUTED"))
+        assertTrue(ApduProtocol.routingReport(true, emptyList()).startsWith("ENRUTADO"))
     }
 
     @Test
@@ -263,6 +263,41 @@ class ApduProtocolTest {
         assertArrayEquals(
             byteArrayOf(0x69.toByte(), 0x85.toByte()),
             run(enroll, s, window = window, cred = "ECO-BBBBBBBBBBBB", now = 1)
+        )
+    }
+
+    @Test
+    fun enroll_adopts_the_released_key_before_it_reaches_the_reader() {
+        val window = EnrollmentWindow().apply { open(VECTOR_CRED, vectorKey, 0) }
+        val s = ApduProtocol.Session().also { run(select(), it) }
+        var adopted: ByteArray? = null
+        val resp = ApduProtocol.processEnroll(
+            enroll, s, VECTOR_CRED, window, 1,
+            onReleased = { raw -> adopted = raw.copyOf(); true },
+        )
+        assertArrayEquals(vectorKey, adopted)
+        assertArrayEquals(vectorKey + ApduProtocol.SW_OK, resp)
+        // The key bytes belong to the window buffer and are wiped after the call.
+        assertTrue(adopted!!.contentEquals(vectorKey))
+    }
+
+    @Test
+    fun a_refused_adopt_answers_6985_and_keeps_the_old_key() {
+        val old = InMemoryCredentialKeyStore().apply { put(VECTOR_CRED, vectorKey) }
+        val window = EnrollmentWindow().apply { open(VECTOR_CRED, ByteArray(32) { 9 }, 0) }
+        val s = ApduProtocol.Session().also { run(select(), it, old) }
+        val resp = ApduProtocol.processEnroll(
+            enroll, s, VECTOR_CRED, window, 1,
+            onReleased = { false },
+        )
+        assertArrayEquals(byteArrayOf(0x69.toByte(), 0x85.toByte()), resp)
+        // One release only: the window is closed even when adoption failed.
+        assertEquals(0, window.remainingMs(1))
+        // The old key still answers the next tap.
+        val oldMac = old.mac(VECTOR_CRED, ApduProtocol.challengeMessage(VECTOR_CRED, ByteArray(8)))
+        assertArrayEquals(
+            oldMac,
+            run(challenge(ByteArray(8)), s, old).sliceArray(17 until 49),
         )
     }
 

@@ -37,18 +37,26 @@ class FeedbackSounds(context: Context) {
     private val loaded = HashSet<Int>()
     private var keepAlive: AudioTrack? = null
 
+    /** Set by [release]; a late callback must never touch a released pool. */
+    @Volatile private var released = false
+
     init {
         pool.setOnLoadCompleteListener { _, id, status -> if (status == 0) synchronized(loaded) { loaded.add(id) } }
     }
 
     fun play(cue: FeedbackCue) {
+        if (released) return
         val id = ids.getValue(cue)
         if (synchronized(loaded) { id !in loaded }) return
-        pool.play(id, 1f, 1f, 1, 0, 1f)
+        try {
+            pool.play(id, 1f, 1f, 1, 0, 1f)
+        } catch (_: Exception) {
+            // El pool se liberó entre la comprobación y la llamada: no suena.
+        }
     }
 
     fun startKeepAlive() {
-        if (keepAlive != null) return
+        if (released || keepAlive != null) return
         keepAlive = try {
             val rate = 44_100
             val silence = ShortArray(rate) // 1 s de ceros
@@ -97,8 +105,13 @@ class FeedbackSounds(context: Context) {
     }
 
     fun release() {
+        if (released) return
+        released = true
         stopKeepAlive()
-        pool.release()
+        try {
+            pool.release()
+        } catch (_: Exception) {
+        }
     }
 
     private fun rawFor(cue: FeedbackCue): Int = when (cue) {

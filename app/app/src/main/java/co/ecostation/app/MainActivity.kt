@@ -96,11 +96,27 @@ class MainActivity : Activity() {
     private var diagnosticsOpen = false
     private var lastTapAtMs = 0L
 
+    /**
+     * Hot-path caches. A reader APDU must never wait on the Keystore, the NFC
+     * stack or the audio service: those answers are refreshed on resume and on
+     * an explicit diagnostics refresh, and only read here.
+     */
+    private var keyPresent: Boolean? = null
+    private var routingText: String? = null
+    private var audioText: String? = null
+
     private data class Signal(val cue: FeedbackCue, val atMs: Long)
 
     private val signals = ArrayDeque<Signal>()
 
     private val handler = Handler(Looper.getMainLooper())
+
+    /** Coalesced render: an APDU burst queues at most one UI pass. */
+    private var renderQueued = false
+    private val renderRunnable = Runnable {
+        renderQueued = false
+        render()
+    }
 
     /**
      * VERIFIED would otherwise flash for a few frames: the reader deselects
@@ -110,24 +126,36 @@ class MainActivity : Activity() {
     private var verifiedAtMs = 0L
     private val refresh = Runnable { render() }
 
+    /**
+     * Called by the HCE service on its APDU thread. The sound is played here
+     * (SoundPool is cheap and thread-safe); everything that touches views or
+     * the Keystore is posted and coalesced, so the APDU response never waits
+     * for a render.
+     */
     private val listener: (String) -> Unit = { event ->
-        runOnUiThread {
-            // El pitido local suena siempre, con o sin modo parlante.
+        val cue = FeedbackCue.fromHceEvent(event)
+        if (cue != null) sounds.play(cue)
+        handler.post {
+            if (isFinishing || isDestroyed) return@post
             lastTapAtMs = System.currentTimeMillis()
-            FeedbackCue.fromHceEvent(event)?.let(::cue)
+            if (cue != null) recordCue(cue)
             if (event.startsWith(AUTH_EVENT)) {
                 verifiedAtMs = SystemClock.elapsedRealtime()
+                keyPresent = true
+                if (settings.linkPending) settings.linkPending = false
                 handler.removeCallbacks(refresh)
                 handler.postDelayed(refresh, VERIFIED_HOLD_MS)
+            } else if (event.startsWith(ENROLL_EVENT)) {
+                keyPresent = true
             }
-            render()
+            postRender()
         }
     }
 
     /** Re-renders once a second while an enrollment window counts down. */
     private val tick = object : Runnable {
         override fun run() {
-            render()
+            postRender()
             if (CredentialRuntime.enrollment.remainingMs(CredentialRuntime.nowMs()) > 0) {
                 handler.postDelayed(this, 1_000L)
             }
@@ -185,8 +213,10 @@ class MainActivity : Activity() {
         }
         linkCancel.setOnClickListener {
             CredentialRuntime.enrollment.close()
+            settings.linkPending = false
             handler.removeCallbacks(tick)
-            render()
+            refreshKeyPresence()
+            postRender()
         }
         nfcSettingsButton.setOnClickListener { openNfcSettings() }
         findViewById<View>(R.id.speakerAddressRow).setOnClickListener {
@@ -203,12 +233,19 @@ class MainActivity : Activity() {
             this,
             settings,
             onCue = { cue ->
-                runOnUiThread { if (!isFinishing && !isDestroyed) cue(cue) }
+                // Worker thread: the SoundPool call is safe here; the UI work
+                // is posted like the HCE path.
+                sounds.play(cue)
+                handler.post {
+                    if (isFinishing || isDestroyed) return@post
+                    recordCue(cue)
+                    postRender()
+                }
             },
             onStatus = { text ->
                 feedStatus = text
-                runOnUiThread {
-                    if (isFinishing || isDestroyed) return@runOnUiThread
+                handler.post {
+                    if (isFinishing || isDestroyed) return@post
                     renderDiagnostics()
                     updateSpeakerUi()
                 }
@@ -252,6 +289,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        renderQueued = false
         sounds.release()
         super.onDestroy()
     }
@@ -259,6 +297,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         HceEvents.addListener(listener)
+        refreshCaches()
         render()
         updateSpeakerUi()
         if (CredentialRuntime.enrollment.remainingMs(CredentialRuntime.nowMs()) > 0) handler.post(tick)
@@ -267,8 +306,28 @@ class MainActivity : Activity() {
     override fun onPause() {
         HceEvents.removeListener(listener)
         handler.removeCallbacks(refresh)
+        handler.removeCallbacks(renderRunnable)
         handler.removeCallbacks(tick)
+        handler.removeCallbacksAndMessages(TEST_SEQUENCE_TOKEN)
+        renderQueued = false
         super.onPause()
+    }
+
+    /** Keystore/NFC/audio binders: only on resume and on explicit refresh. */
+    private fun refreshCaches() {
+        refreshKeyPresence()
+        routingText = routingReport()
+        audioText = sounds.outputDescription()
+    }
+
+    private fun refreshKeyPresence() {
+        keyPresent = CredentialRuntime.keys.hasKey(ApduProtocol.CRED_ID)
+    }
+
+    private fun postRender() {
+        if (renderQueued) return
+        renderQueued = true
+        handler.post(renderRunnable)
     }
 
     // -------------------------------------------------------------- pestañas
@@ -306,8 +365,9 @@ class MainActivity : Activity() {
     // ------------------------------------------------------------- vinculación
 
     /**
-     * The holder opens the one-time key hand-off at the pairing desk. A new
-     * Keystore key replaces the old one first, so the dialog says so.
+     * The holder opens the one-time key hand-off at the pairing desk. The
+     * current key keeps working until the reader confirms ENROLL, so a failed
+     * or cancelled link never leaves a dead credential.
      */
     private fun askToLink() {
         AlertDialog.Builder(this)
@@ -315,14 +375,18 @@ class MainActivity : Activity() {
             .setMessage(R.string.link_body)
             .setPositiveButton(R.string.link_start) { _, _ ->
                 if (!CredentialRuntime.beginEnrollment()) {
+                    settings.linkPending = false
                     AlertDialog.Builder(this)
                         .setMessage(R.string.link_failed)
                         .setPositiveButton(android.R.string.ok, null)
                         .show()
+                } else {
+                    settings.linkPending = true
                 }
                 handler.removeCallbacks(tick)
                 handler.post(tick)
-                render()
+                refreshKeyPresence()
+                postRender()
             }
             .setNegativeButton(R.string.name_cancel, null)
             .show()
@@ -340,7 +404,8 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun hasKey(): Boolean = CredentialRuntime.keys.hasKey(ApduProtocol.CRED_ID)
+    /** Cached Keystore answer; refreshed on resume, cancel and ENROLL/CHALLENGE. */
+    private fun hasKey(): Boolean = keyPresent ?: false
 
     private enum class CardState { READY, LINKED, VERIFIED, NFC_OFF, UNSUPPORTED, LINKING, LINK_SENT, NOT_LINKED }
 
@@ -352,23 +417,21 @@ class MainActivity : Activity() {
         if (SystemClock.elapsedRealtime() - verifiedAtMs < VERIFIED_HOLD_MS) return CardState.VERIFIED
         if (CredentialRuntime.enrollment.remainingMs(CredentialRuntime.nowMs()) > 0) return CardState.LINKING
 
+        // LLAVE ENVIADA until a CHALLENGE proves the reader knows the new key.
+        if (settings.linkPending) return CardState.LINK_SENT
+
+        // A phone without a key cannot answer a reader: say so instead of READY.
+        if (!hasKey()) return CardState.NOT_LINKED
+
         // Otherwise reflect the live exchange: LINKED from the reader's
         // SELECT until it deactivates the target.
-        val history = HceEvents.history.toList()
-        // KEY SENT sticks until the next completed challenge supersedes it.
-        val keySent = history.indexOfLast { it.startsWith(ENROLL_EVENT) } >
-            history.indexOfLast { it.startsWith(AUTH_EVENT) }
-        val live = when (val last = history.lastOrNull()) {
-            null -> CardState.READY
-            else -> when {
-                last.startsWith(AUTH_EVENT) -> CardState.VERIFIED
-                last.startsWith("SELECT") -> CardState.LINKED
-                keySent -> CardState.LINK_SENT
-                else -> CardState.READY
-            }
+        val last = HceEvents.history.toList().lastOrNull()
+        return when {
+            last == null -> CardState.READY
+            last.startsWith(AUTH_EVENT) -> CardState.VERIFIED
+            last.startsWith(SELECT_EVENT) -> CardState.LINKED
+            else -> CardState.READY
         }
-        // A phone without a key cannot answer a reader: say so instead of READY.
-        return if (live == CardState.READY && !hasKey()) CardState.NOT_LINKED else live
     }
 
     private fun render() {
@@ -455,7 +518,8 @@ class MainActivity : Activity() {
         unlinkedGroup.visibility = if (state == CardState.NOT_LINKED) View.VISIBLE else View.GONE
         findViewById<View>(R.id.linkPhone).visibility =
             if (state == CardState.NOT_LINKED) View.VISIBLE else View.GONE
-        linkCancel.visibility = if (state == CardState.LINKING) View.VISIBLE else View.GONE
+        linkCancel.visibility =
+            if (state == CardState.LINKING || state == CardState.LINK_SENT) View.VISIBLE else View.GONE
         nfcSettingsButton.visibility = if (state == CardState.NFC_OFF) View.VISIBLE else View.GONE
 
         val showTarget = state == CardState.READY || state == CardState.LINKED ||
@@ -513,6 +577,11 @@ class MainActivity : Activity() {
         diagnosticsOpen = !diagnosticsOpen
         diagBody.visibility = if (diagnosticsOpen) View.VISIBLE else View.GONE
         diagChevron.rotation = if (diagnosticsOpen) 90f else 0f
+        if (diagnosticsOpen) {
+            // Explicit refresh: these are the only binder reads in diagnostics.
+            refreshCaches()
+            renderDiagnostics()
+        }
     }
 
     private fun renderDiagnostics() {
@@ -522,14 +591,14 @@ class MainActivity : Activity() {
         diagView.text = listOf(
             getString(R.string.diag_credential) to ApduProtocol.CRED_ID,
             getString(R.string.diag_hce) to hceReport(),
-            getString(R.string.diag_routing) to routingReport(),
+            getString(R.string.diag_routing) to (routingText ?: "—"),
             getString(R.string.diag_key) to getString(if (hasKey()) R.string.diag_key_present else R.string.diag_key_missing),
             getString(R.string.diag_events) to events,
         ).joinToString("\n\n") { (title, body) -> "$title\n$body" }
         feedView.text = getString(R.string.diag_feed) + "\n" +
             getString(R.string.diag_feed_body, feedStatus.ifEmpty { "—" }, lastCue)
         audioView.text = getString(R.string.diag_audio) + "\n" +
-            getString(R.string.diag_audio_body, sounds.outputDescription())
+            getString(R.string.diag_audio_body, audioText ?: "—")
 
         val address = settings.serverAddress?.takeIf { it.isNotBlank() }
         speakerAddressValue.text = address ?: getString(R.string.speaker_server_auto)
@@ -537,20 +606,28 @@ class MainActivity : Activity() {
 
     // ---------------------------------------------------------------- sonido
 
-    private fun cue(cue: FeedbackCue) {
-        sounds.play(cue)
+    /** UI bookkeeping for a cue; the sound is already playing. */
+    private fun recordCue(cue: FeedbackCue) {
         val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
         lastCue = "${cue.name.lowercase(Locale.ROOT)} @ $time"
         signals.addFirst(Signal(cue, System.currentTimeMillis()))
         while (signals.size > SIGNAL_LIMIT) signals.removeLast()
         renderSignals()
+    }
+
+    /** Bridge/test path: play, record and repaint in one main-thread step. */
+    private fun cue(cue: FeedbackCue) {
+        sounds.play(cue)
+        recordCue(cue)
         renderDiagnostics()
     }
 
     /** "Toca aquí para probar los cinco sonidos": uno cada 700 ms. */
     private fun playTestSequence() {
+        handler.removeCallbacksAndMessages(TEST_SEQUENCE_TOKEN)
+        val start = SystemClock.uptimeMillis()
         FeedbackCue.entries.forEachIndexed { index, cue ->
-            handler.postDelayed({ cue(cue) }, index * 700L)
+            handler.postAtTime({ cue(cue) }, TEST_SEQUENCE_TOKEN, start + index * 700L)
         }
     }
 
@@ -754,9 +831,11 @@ class MainActivity : Activity() {
         const val SECTION_SPEAKER = "speaker"
 
         private const val VERIFIED_HOLD_MS = 3_000L
-        private const val AUTH_EVENT = "CHALLENGE -> 9000"
-        private const val ENROLL_EVENT = "ENROLL -> 9000"
+        private const val AUTH_EVENT = "RETO -> 9000"
+        private const val ENROLL_EVENT = "ENROLAR -> 9000"
+        private const val SELECT_EVENT = "SELECCIONAR AID"
         private const val ENROLLMENT_TTL_MS = 60_000f
         private const val SIGNAL_LIMIT = 3
+        private val TEST_SEQUENCE_TOKEN = Any()
     }
 }

@@ -30,6 +30,14 @@ interface CredentialKeyStore {
     fun provision(credentialId: String): ByteArray
 
     /**
+     * Import [raw] as this credential's key, REPLACING any previous one.
+     * Used when the pairing reader confirms it received the key: until then
+     * the old key stays in place and keeps answering taps. Returns false when
+     * the store refused; the caller wipes [raw] either way.
+     */
+    fun adopt(credentialId: String, raw: ByteArray): Boolean
+
+    /**
      * HMAC-SHA256 of [message] under [credentialId]'s key, or null when there
      * is no key or it is unusable (corrupt, invalidated). Never throws: the
      * HCE service turns null into `6A88`.
@@ -80,13 +88,21 @@ class AndroidKeystoreCredentialKeyStore : CredentialKeyStore {
 
     override fun provision(credentialId: String): ByteArray {
         val raw = ByteArray(CredentialKeyStore.KEY_BYTES).also { SecureRandom().nextBytes(it) }
-        try {
-            importKey(credentialId, raw)
-        } catch (e: Exception) {
+        if (!adopt(credentialId, raw)) {
             raw.fill(0)
-            throw e
+            throw IllegalStateException("el Keystore rechazó la llave de la credencial")
         }
         return raw
+    }
+
+    override fun adopt(credentialId: String, raw: ByteArray): Boolean {
+        if (raw.size != CredentialKeyStore.KEY_BYTES) return false
+        return try {
+            importKey(credentialId, raw)
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 
     /**

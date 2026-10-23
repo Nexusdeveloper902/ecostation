@@ -72,8 +72,8 @@ enum class FeedbackCue {
 
         /** One local HCE exchange line (see EcoHostApduService.describe). */
         fun fromHceEvent(event: String): FeedbackCue? = when (event) {
-            "CHALLENGE -> 9000", "ENROLL -> 9000" -> DETECTED
-            "CHALLENGE -> error", "CHALLENGE -> no key" -> REJECTED
+            "RETO -> 9000", "ENROLAR -> 9000" -> DETECTED
+            "RETO -> error", "RETO -> sin llave" -> REJECTED
             else -> null
         }
     }

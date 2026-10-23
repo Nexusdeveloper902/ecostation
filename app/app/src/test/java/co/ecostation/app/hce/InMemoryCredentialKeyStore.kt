@@ -14,6 +14,9 @@ class InMemoryCredentialKeyStore : CredentialKeyStore {
     var provisionCount = 0
         private set
 
+    /** Set false to simulate a Keystore that refuses the imported key. */
+    var adoptResult = true
+
     fun put(credentialId: String, key: ByteArray) {
         keys[credentialId] = key.copyOf()
     }
@@ -30,6 +33,12 @@ class InMemoryCredentialKeyStore : CredentialKeyStore {
         val raw = ByteArray(CredentialKeyStore.KEY_BYTES).also { java.security.SecureRandom().nextBytes(it) }
         keys[credentialId] = raw.copyOf()
         return raw
+    }
+
+    override fun adopt(credentialId: String, raw: ByteArray): Boolean {
+        if (!adoptResult) return false
+        keys[credentialId] = raw.copyOf()
+        return true
     }
 
     override fun mac(credentialId: String, message: ByteArray): ByteArray? = try {

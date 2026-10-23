@@ -1,27 +1,45 @@
 package co.ecostation.app.hce
 
+import android.os.SystemClock
+import java.security.SecureRandom
+
 /**
  * Everything [EcoHostApduService] does with a command APDU, minus the
  * Android `Service` shell, so the service boundary is testable on the host.
  * The path is: APDU → per-tap session → this credential's id → nonce → key
  * lookup ([CredentialKeyStore]) → HMAC → response APDU, plus the one-time
- * ENROLL hand-off from the [EnrollmentWindow].
+ * ENROLL hand-off from the [EnrollmentWindow]. A successful ENROLL is adopted
+ * into the store before the bytes leave; a successful CHALLENGE notifies
+ * [onAuthenticated] so the UI can clear its "llave enviada" state.
  *
- * Pure JVM: the clock is injected, and monotonic time needs no Android API.
+ * Pure Kotlin apart from the default monotonic clock; tests inject both.
  */
 class HceResponder(
     private val keys: CredentialKeyStore,
     private val enrollment: EnrollmentWindow,
     private val credentialId: () -> String = { ApduProtocol.CRED_ID },
-    private val clockMs: () -> Long = { System.nanoTime() / 1_000_000 },
+    private val clockMs: () -> Long = { SystemClock.elapsedRealtime() },
+    private val onAuthenticated: (() -> Unit)? = null,
 ) {
     private val session = ApduProtocol.Session()
 
     /** True between a matching SELECT and the next deactivation. */
     val selected: Boolean get() = session.selected
 
-    fun respond(commandApdu: ByteArray): ByteArray =
-        ApduProtocol.process(commandApdu, session, credentialId(), keys, enrollment, clockMs())
+    fun respond(commandApdu: ByteArray): ByteArray {
+        val id = credentialId()
+        val response = ApduProtocol.process(
+            commandApdu,
+            session,
+            id,
+            keys,
+            enrollment,
+            clockMs(),
+            onReleased = { raw -> keys.adopt(id, raw) },
+        )
+        if (isSuccess(response) && isChallenge(commandApdu)) onAuthenticated?.invoke()
+        return response
+    }
 
     /** RF field lost / reader deselected: the next tap starts from SELECT. */
     fun deactivate() {
@@ -30,20 +48,29 @@ class HceResponder(
 
     /** Short, secret-free label for the UI event log. */
     fun describe(cmd: ByteArray, resp: ByteArray): String {
-        val ok = resp.size >= 2 && resp[resp.size - 2] == 0x90.toByte() && resp[resp.size - 1] == 0x00.toByte()
+        val ok = isSuccess(resp)
         val name = when {
-            cmd.size >= 2 && cmd[0] == 0x00.toByte() && cmd[1] == 0xA4.toByte() -> "SELECT AID"
-            cmd.size >= 2 && cmd[0] == 0x80.toByte() && cmd[1] == 0x10.toByte() -> "CHALLENGE"
-            cmd.size >= 2 && cmd[0] == 0x80.toByte() && cmd[1] == 0x20.toByte() -> "ENROLL"
-            else -> "Unknown cmd"
+            cmd.size >= 2 && cmd[0] == 0x00.toByte() && cmd[1] == 0xA4.toByte() -> "SELECCIONAR AID"
+            cmd.size >= 2 && cmd[0] == 0x80.toByte() && cmd[1] == 0x10.toByte() -> "RETO"
+            cmd.size >= 2 && cmd[0] == 0x80.toByte() && cmd[1] == 0x20.toByte() -> "ENROLAR"
+            else -> "comando desconocido"
         }
         val status = when {
             ok -> "9000"
-            resp.contentEquals(ApduProtocol.SW_KEY_MISSING) -> "no key"
+            resp.contentEquals(ApduProtocol.SW_KEY_MISSING) -> "sin llave"
             else -> "error"
         }
         return "$name -> $status"
     }
+
+    private fun isSuccess(resp: ByteArray): Boolean =
+        resp.size >= 2 &&
+            resp[resp.size - 2] == 0x90.toByte() &&
+            resp[resp.size - 1] == 0x00.toByte()
+
+    /** CHALLENGE is `80 10 ...`; only that command can prove the key works. */
+    private fun isChallenge(cmd: ByteArray): Boolean =
+        cmd.size >= 2 && cmd[0] == 0x80.toByte() && cmd[1] == 0x10.toByte()
 }
 
 /**
@@ -55,19 +82,21 @@ object CredentialRuntime {
     val keys: CredentialKeyStore by lazy { AndroidKeystoreCredentialKeyStore() }
     val enrollment = EnrollmentWindow()
 
-    fun nowMs(): Long = System.nanoTime() / 1_000_000
+    /** Monotonic wall-clock that keeps counting through deep sleep. */
+    fun nowMs(): Long = SystemClock.elapsedRealtime()
 
     /**
-     * Start linking this phone: a NEW key replaces the old one in the
-     * Keystore, and a copy waits in the window for the desk reader's
-     * ENROLL. Returns false if the Keystore refused, so no window opens.
+     * Start linking this phone. A fresh 32-byte key is held in the window for
+     * ONE reader ENROLL, but it is **not** imported yet: the current key keeps
+     * answering taps, so a reader that never shows up (or a cancelled link)
+     * leaves a working credential. The HCE path adopts the new key only when
+     * ENROLL reaches the store successfully.
+     *
+     * Returns false only if the window cannot be opened (never the old key's
+     * fault), so the UI does not promise a link that cannot happen.
      */
     fun beginEnrollment(credentialId: String = ApduProtocol.CRED_ID): Boolean {
-        val raw = try {
-            keys.provision(credentialId)
-        } catch (e: Exception) {
-            return false
-        }
+        val raw = ByteArray(CredentialKeyStore.KEY_BYTES).also { SecureRandom().nextBytes(it) }
         try {
             enrollment.open(credentialId, raw, nowMs())
         } finally {
