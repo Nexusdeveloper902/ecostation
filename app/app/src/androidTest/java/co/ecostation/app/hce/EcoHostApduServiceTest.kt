@@ -118,20 +118,37 @@ class EcoHostApduServiceTest : ServiceTestCase<EcoHostApduService>(EcoHostApduSe
         assertTrue(hex("6F00").contentEquals(svc.processCommandApdu(null, null)))
     }
 
-    fun testLinkingHandsOverTheSameKeyTheChallengeUsedExactlyOnce() {
+    fun testLinkingHandsOverTheSameKeyTheChallengeWillUseExactlyOnce() {
+        // The window holds a new key; the phone has no key until the reader
+        // confirms ENROLL, so nothing was imported by beginEnrollment itself.
         assertTrue(CredentialRuntime.beginEnrollment(TEST_CRED))
-        assertTrue(keys.hasKey(TEST_CRED))
+        assertFalse(keys.hasKey(TEST_CRED))
         val svc = service
 
         svc.processCommandApdu(select, null)
         val nonce = hex("a1a2a3a4a5a6a7a8")
-        val chal = svc.processCommandApdu(challenge(nonce), null)
         val enrolled = svc.processCommandApdu(enroll, null)
         assertEquals(34, enrolled.size)
         val key = enrolled.copyOf(32)
+        assertTrue(keys.hasKey(TEST_CRED))
 
+        val chal = svc.processCommandApdu(challenge(nonce), null)
         val cred = TEST_CRED.toByteArray(Charsets.US_ASCII)
         assertTrue(softwareMac(key, cred + nonce).contentEquals(chal.copyOfRange(1 + cred.size, 1 + cred.size + 32)))
+        assertTrue(hex("6985").contentEquals(svc.processCommandApdu(enroll, null)))
+    }
+
+    fun testCancellingTheLinkLeavesTheOldKeyInPlace() {
+        val old = ByteArray(32) { 0x5A }
+        keys.importKey(TEST_CRED, old)
+        assertTrue(CredentialRuntime.beginEnrollment(TEST_CRED))
+        CredentialRuntime.enrollment.close()
+        val svc = service
+        svc.processCommandApdu(select, null)
+        val nonce = hex("b1b2b3b4b5b6b7b8")
+        val chal = svc.processCommandApdu(challenge(nonce), null)
+        val cred = TEST_CRED.toByteArray(Charsets.US_ASCII)
+        assertTrue(softwareMac(old, cred + nonce).contentEquals(chal.copyOfRange(1 + cred.size, 1 + cred.size + 32)))
         assertTrue(hex("6985").contentEquals(svc.processCommandApdu(enroll, null)))
     }
 
