@@ -430,6 +430,32 @@ class HceCredentialTest extends TestCase
     }
 
     #[Test]
+    public function a_revoked_phone_is_reactivated_for_the_same_student_with_a_fresh_key(): void
+    {
+        [$phone, $student] = $this->enrolledPhone('PLS-REACTIVATE01');
+        $card = Card::where('credential_uid', 'PLS-REACTIVATE01')->firstOrFail();
+        $this->tap($phone->tap())->assertOk();
+
+        // Revoke: the row and its history survive, the old key dies.
+        $card->update(['status' => 'revoked']);
+        HceCredentialKey::where('card_id', $card->id)->delete();
+
+        $reinstalled = new FakeHcePhone('PLS-REACTIVATE01');
+        $this->arm($student);
+
+        $this->pair($reinstalled)->assertOk()
+            ->assertJson(['rekeyed' => false, 'student_id' => $student->id]);
+
+        // The SAME row is reused (one card, history kept) with the new key.
+        $this->assertSame(1, Card::where('credential_uid', 'PLS-REACTIVATE01')->count());
+        $this->assertSame($student->id, (int) $card->refresh()->student_id);
+        $this->assertSame(1, PresenceEvent::where('card_id', $card->id)->count());
+        $this->tap($phone->tap())->assertStatus(403);
+        $this->tap($reinstalled->tap())->assertOk();
+        $this->assertSame(2, PresenceEvent::where('card_id', $card->id)->count());
+    }
+
+    #[Test]
     public function provisioning_can_never_overwrite_another_students_credential_key(): void
     {
         [$victim] = $this->enrolledPhone('PLS-VICTIMPHONE1');

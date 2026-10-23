@@ -173,7 +173,7 @@ class AdminPairingTest extends TestCase
     }
 
     #[Test]
-    public function a_revoked_card_can_be_paired_again_for_the_armed_student_with_a_fresh_key(): void
+    public function a_revoked_card_can_be_paired_again_for_the_same_student_with_a_fresh_key(): void
     {
         $this->enrolledPhone('HCE-REPAIR-0001');
 
@@ -185,14 +185,14 @@ class AdminPairingTest extends TestCase
             ->delete("/admin/cards/{$card->id}")
             ->assertRedirect(route('admin.pairing'));
 
-        $target = $this->studentWithoutCard();
+        $target = Student::findOrFail($originalStudentId);
         $this->actingAs($this->admin())
             ->post('/admin/pairing/arm', ['student_id' => $target->id])
             ->assertRedirect();
 
         // A reinstalled phone: same credential_uid, new 32-byte key. The
-        // armed window reactivates the revoked row instead of refusing it
-        // as already paired.
+        // armed window reactivates the revoked row for its ORIGINAL
+        // student instead of refusing it as already paired.
         $newPhone = new FakeHcePhone('HCE-REPAIR-0001');
 
         $this->pair($newPhone)
@@ -203,7 +203,7 @@ class AdminPairingTest extends TestCase
         $this->assertSame('active', $card->status->value);
         $this->assertSame($target->id, (int) $card->student_id);
         $this->assertSame('hce', $card->kind->value);
-        $this->assertNotSame($originalStudentId, (int) $card->student_id);
+        $this->assertSame($originalStudentId, (int) $card->student_id);
 
         $this->assertSame(1, HceCredentialKey::where('card_id', $card->id)->count());
         $this->assertNotSame($originalFingerprint, HceCredentialKey::where('card_id', $card->id)->value('fingerprint'));

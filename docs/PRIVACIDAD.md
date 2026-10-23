@@ -107,7 +107,9 @@ escucha solo en `127.0.0.1`; con `ECOSTATION_LAN=1` se expone a la LAN).
 - Desemparejar o revocar una credencial la deja en estado `revoked`,
   destruye la clave HCE y conserva eventos, depósitos y puntos. Una
   credencial revocada puede reactivarse deliberadamente desde la mesa de
-  emparejamiento con una clave nueva.
+  emparejamiento **solo para el mismo estudiante**, con una clave nueva;
+  si se intenta usar para otro estudiante se rechaza y el historial
+  conserva su atribución original.
 
 ## Resumen
 

@@ -3,8 +3,10 @@
 namespace Tests\Feature\Api;
 
 use App\Models\PendingPairing;
+use App\Models\PointsLedger;
 use App\Models\Student;
 use App\Services\PairingService;
+use App\Services\PointsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
@@ -160,31 +162,82 @@ class CardPairingTest extends TestCase
     }
 
     #[Test]
-    public function a_revoked_card_is_reactivated_for_the_armed_student(): void
+    public function a_revoked_card_is_reactivated_for_the_same_student_with_a_fresh_key(): void
     {
         // Unpair/revoke keeps the row, so the same credential_uid may be
-        // re-linked deliberately: no new card row, history untouched.
+        // re-linked deliberately for its ORIGINAL student: no new card
+        // row, history untouched and still attributed to that student.
         $card = $this->cardOf('Ana Martínez');
+        $ana = $card->student;
+
+        $history = $this->recyclingTapFor('Ana Martínez');
+        PointsLedger::create([
+            'student_id' => $ana->id,
+            'delta' => 8,
+            'reason' => 'recycling_deposit',
+            'event_id' => $history->id,
+        ]);
+
         $card->update(['status' => 'revoked']);
 
-        $target = $this->studentWithoutCard();
-        $this->arm($target);
+        $this->arm($ana->fresh());
 
         $this->pair($card->credential_uid)->assertOk()
             ->assertJson([
                 'status' => 'ok',
-                'student_id' => $target->id,
+                'student_id' => $ana->id,
                 'rekeyed' => false,
             ]);
 
         $card->refresh();
         $this->assertSame('active', $card->status->value);
-        $this->assertSame($target->id, (int) $card->student_id);
+        $this->assertSame($ana->id, (int) $card->student_id);
+        $this->assertSame($ana->id, (int) $history->refresh()->card->student_id);
+        $this->assertSame(8, app(PointsService::class)->balance($ana));
 
         // An ACTIVE card of someone else is still never reassigned.
         $this->arm($this->studentWithoutCard());
         $this->pair($card->credential_uid)->assertStatus(422)
             ->assertJson(['message' => 'La tarjeta ya está emparejada']);
+    }
+
+    #[Test]
+    public function a_revoked_card_cannot_be_reactivated_for_a_different_student(): void
+    {
+        // Reusing the row for a different student would rewrite every
+        // historical event of that card. The desk gets `already_paired`
+        // and the original attribution (events + balance) survives.
+        $card = $this->cardOf('Ana Martínez');
+        $ana = $card->student;
+        $history = $this->recyclingTapFor('Ana Martínez');
+        PointsLedger::create([
+            'student_id' => $ana->id,
+            'delta' => 8,
+            'reason' => 'recycling_deposit',
+            'event_id' => $history->id,
+        ]);
+
+        $card->update(['status' => 'revoked']);
+
+        $other = $this->studentWithoutCard();
+        $this->arm($other);
+
+        $this->pair($card->credential_uid)->assertStatus(422)
+            ->assertJson([
+                'status' => 'error',
+                'message' => 'La tarjeta ya está emparejada',
+            ]);
+
+        // Nothing moved: same owner, same event, same balance.
+        $card->refresh();
+        $this->assertSame('revoked', $card->status->value);
+        $this->assertSame($ana->id, (int) $card->student_id);
+        $this->assertSame($ana->id, (int) $history->refresh()->card->student_id);
+        $this->assertSame(8, app(PointsService::class)->balance($ana));
+        $this->assertSame(0, app(PointsService::class)->balance($other));
+
+        // The armed window stays open for a genuinely fresh credential.
+        $this->pair('FRESHAFTERREVOKE1')->assertOk();
     }
 
     #[Test]

@@ -124,7 +124,9 @@ class PairingService
      * if the proof verifies under it, and an existing phone credential can
      * be re-keyed only for the same student this window was armed for.
      * A `revoked` credential (unpair) is deliberately reactivatable for
-     * the armed student; an ACTIVE one owned by someone else is not.
+     * its ORIGINAL student only: reusing the row for a different student
+     * would silently rewrite that card's historical events. An ACTIVE
+     * card of someone else is never reassigned either.
      *
      * @param  array<string, mixed>  $hce
      * @return array{ok: true, card: Card, student: Student, pairing: PendingPairing, rekeyed: bool}|array{ok: false, reason: 'no_session'|'already_paired'|'hce_proof_invalid'}
@@ -179,14 +181,15 @@ class PairingService
                 }
             }
 
-            // A revoked card belongs to nobody in operation: an armed
-            // window may deliberately reactivate that same credential for
-            // the student at the desk. The row (and therefore its history)
-            // is reused; the phone gets a fresh key. An ACTIVE card of
-            // another student is still never reassigned.
-            if ($existing !== null && $existing->status === CardStatus::Revoked) {
+            // A revoked card may be deliberately reactivated for the SAME
+            // student: the row (and therefore its history) is reused and
+            // the phone gets a fresh key. Reassigning it to a different
+            // student would rewrite that history, so it is refused below
+            // as `already_paired` like any other foreign card.
+            if ($existing !== null
+                && $existing->status === CardStatus::Revoked
+                && (int) $existing->student_id === (int) $pairing->student_id) {
                 $existing->update([
-                    'student_id' => $pairing->student_id,
                     'status' => CardStatus::Active,
                     'kind' => $kind,
                 ]);
