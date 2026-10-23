@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Middleware\EnsurePasswordChanged;
+use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\ResolveReaderToken;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -16,7 +18,14 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'reader.auth' => ResolveReaderToken::class,
+            'role' => EnsureRole::class,
+            'password.changed' => EnsurePasswordChanged::class,
         ]);
+
+        // Force password rotation on every real page and API route; the
+        // middleware itself exempts the login/logout/password routes.
+        $middleware->appendToGroup('web', EnsurePasswordChanged::class);
+        $middleware->appendToGroup('api', EnsurePasswordChanged::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

@@ -27,6 +27,10 @@ return [
     'capture_not_owned_by_reader' => 'La captura no pertenece a este lector',
     'capture_already_associated' => 'La captura ya fue asociada a una tarjeta',
 
+    // Sesión web y autorización
+    'password_change_required' => 'Debes definir una nueva contraseña antes de continuar.',
+    'forbidden_role' => 'No tienes permiso para realizar esta acción.',
+
     // Endpoint de emparejamiento de tarjetas
     'pairing_no_active_session' => 'No hay ninguna sesión de emparejamiento activa',
     'pairing_card_already_paired' => 'La tarjeta ya está emparejada',
