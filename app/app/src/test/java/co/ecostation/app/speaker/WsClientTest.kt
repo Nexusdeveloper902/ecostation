@@ -117,12 +117,45 @@ class WsClientTest {
         }
     }
 
+    @Test
+    fun continuationFramesAreReassembledIntoOneTextMessage() {
+        FakeWsServer().use { server ->
+            server.onClient = { s ->
+                val out = s.getOutputStream()
+                out.write(serverFrame(0x1, """{"type":"hello",""", fin = false))
+                out.write(serverFrame(0x0, """"events":[]}""", fin = true))
+                out.flush()
+                Thread.sleep(200)
+                s.close()
+            }
+            val ws = WsClient.connect("ws://127.0.0.1:${server.port}/app")
+            val messages = CopyOnWriteArrayList<String>()
+            try {
+                ws.readLoop { messages.add(it) }
+            } catch (_: IOException) {
+                // The fake server hangs up after the fragmented message.
+            }
+            assertEquals(listOf("""{"type":"hello","events":[]}"""), messages)
+        }
+    }
+
+    @Test
+    fun a64BitLengthWithTheHighBitSetIsRejected() {
+        val frame = byteArrayOf(0x82.toByte(), 0x7F) + ByteArray(8) { 0xFF.toByte() }
+        try {
+            WsClient.readFrame(frame.inputStream())
+            fail("a negative 64-bit length must not allocate")
+        } catch (e: IOException) {
+            assertTrue(e.message!!.contains("longitud"))
+        }
+    }
+
     // ------------------------------------------------------------- helpers
 
-    private fun serverFrame(opcode: Int, text: String): ByteArray {
+    private fun serverFrame(opcode: Int, text: String, fin: Boolean = true): ByteArray {
         val p = text.toByteArray()
         require(p.size < 126)
-        return byteArrayOf((0x80 or opcode).toByte(), p.size.toByte()) + p
+        return byteArrayOf(((if (fin) 0x80 else 0x00) or opcode).toByte(), p.size.toByte()) + p
     }
 
     private class FakeWsServer(private val status: String = "HTTP/1.1 101 Switching Protocols") : AutoCloseable {

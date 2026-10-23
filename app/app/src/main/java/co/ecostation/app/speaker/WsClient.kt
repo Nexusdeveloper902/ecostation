@@ -37,10 +37,12 @@ class WsClient private constructor(private val socket: Socket) {
      * on a clean close or deactivation; throws IOException on a broken link.
      */
     fun readLoop(isActive: () -> Boolean = { true }, onText: (String) -> Unit) {
-        var lastInbound = System.currentTimeMillis()
+        var lastInbound = nowMs()
         var lastPing = lastInbound
+        var fragments: ByteArrayOutputStream? = null
+        var fragmentOpcode = 0
         while (!closed && isActive()) {
-            val now = System.currentTimeMillis()
+            val now = nowMs()
             if (now - lastInbound > DEAD_AFTER_MS) throw IOException("sin datos durante ${DEAD_AFTER_MS / 1000} s")
             if (now - lastPing >= PING_EVERY_MS) {
                 send(OP_PING, ByteArray(0))
@@ -51,18 +53,43 @@ class WsClient private constructor(private val socket: Socket) {
             } catch (e: SocketTimeoutException) {
                 continue // poll tick: check liveness, maybe ping
             }
-            lastInbound = System.currentTimeMillis()
+            lastInbound = nowMs()
             when (frame.opcode) {
-                OP_TEXT -> onText(String(frame.payload, Charsets.UTF_8))
+                OP_TEXT, OP_BINARY -> {
+                    if (frame.fin) {
+                        if (fragments != null) throw IOException("mensaje nuevo dentro de uno fragmentado")
+                        if (frame.opcode == OP_TEXT) onText(String(frame.payload, Charsets.UTF_8))
+                    } else {
+                        if (fragments != null) throw IOException("mensaje nuevo dentro de uno fragmentado")
+                        val buffer = ByteArrayOutputStream(frame.payload.size * 2)
+                        buffer.write(frame.payload)
+                        fragments = buffer
+                        fragmentOpcode = frame.opcode
+                    }
+                }
+                OP_CONTINUATION -> {
+                    val buffer = fragments ?: throw IOException("continuación sin mensaje iniciado")
+                    if (buffer.size() + frame.payload.size > MAX_FRAME) {
+                        throw IOException("mensaje fragmentado demasiado grande")
+                    }
+                    buffer.write(frame.payload)
+                    if (frame.fin) {
+                        if (fragmentOpcode == OP_TEXT) onText(String(buffer.toByteArray(), Charsets.UTF_8))
+                        fragments = null
+                        fragmentOpcode = 0
+                    }
+                }
                 OP_PING -> send(OP_PONG, frame.payload)
                 OP_CLOSE -> {
                     close()
                     return
                 }
-                else -> Unit // pong / binary / continuation: nothing to do
+                else -> Unit // pong: nothing to do
             }
         }
     }
+
+    private fun nowMs(): Long = System.nanoTime() / 1_000_000
 
     fun close() {
         if (closed) return
@@ -84,10 +111,12 @@ class WsClient private constructor(private val socket: Socket) {
         output.flush()
     }
 
-    class Frame(val opcode: Int, val payload: ByteArray)
+    class Frame(val opcode: Int, val payload: ByteArray, val fin: Boolean = true)
 
     companion object {
+        const val OP_CONTINUATION = 0x0
         const val OP_TEXT = 0x1
+        const val OP_BINARY = 0x2
         const val OP_CLOSE = 0x8
         const val OP_PING = 0x9
         const val OP_PONG = 0xA
@@ -201,7 +230,7 @@ class WsClient private constructor(private val socket: Socket) {
             if (b0 < 0) throw EOFException("el servidor cerró la conexión")
             // Once a frame has started it must finish within the dead-link
             // window — a link that dies mid-frame must not hang the reader.
-            val deadline = System.currentTimeMillis() + DEAD_AFTER_MS
+            val deadline = System.nanoTime() / 1_000_000 + DEAD_AFTER_MS
             val next = { readByte(input, deadline) }
             val b1 = next()
             val masked = b1 and 0x80 != 0
@@ -211,8 +240,11 @@ class WsClient private constructor(private val socket: Socket) {
             } else if (length == 127L) {
                 length = 0
                 repeat(8) { length = (length shl 8) or next().toLong() }
+                // RFC 6455 §5.2: the most significant bit MUST be 0. A negative
+                // Long is exactly that bit set (or a size the JVM cannot hold).
+                if (length < 0) throw IOException("longitud de trama no válida")
             }
-            if (length > MAX_FRAME) throw IOException("trama demasiado grande: $length")
+            if (length < 0 || length > MAX_FRAME) throw IOException("trama demasiado grande: $length")
             val mask = if (masked) ByteArray(4) { next().toByte() } else null
             val payload = ByteArray(length.toInt())
             var off = 0
@@ -220,14 +252,14 @@ class WsClient private constructor(private val socket: Socket) {
                 val n = try {
                     input.read(payload, off, payload.size - off)
                 } catch (e: SocketTimeoutException) {
-                    if (System.currentTimeMillis() > deadline) throw e
+                    if (System.nanoTime() / 1_000_000 > deadline) throw e
                     continue
                 }
                 if (n < 0) throw EOFException("la conexión se cerró a mitad de una trama")
                 off += n
             }
             if (mask != null) for (i in payload.indices) payload[i] = (payload[i].toInt() xor mask[i % 4].toInt()).toByte()
-            return Frame(b0 and 0x0F, payload)
+            return Frame(b0 and 0x0F, payload, fin = b0 and 0x80 != 0)
         }
 
         private fun readByte(input: InputStream, deadline: Long): Int {
@@ -235,7 +267,7 @@ class WsClient private constructor(private val socket: Socket) {
                 val b = try {
                     input.read()
                 } catch (e: SocketTimeoutException) {
-                    if (System.currentTimeMillis() > deadline) throw IOException("la conexión se atascó a mitad de una trama")
+                    if (System.nanoTime() / 1_000_000 > deadline) throw IOException("la conexión se atascó a mitad de una trama")
                     continue
                 }
                 if (b < 0) throw EOFException("la conexión se cerró a mitad de una trama")
