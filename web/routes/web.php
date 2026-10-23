@@ -3,6 +3,7 @@
 use App\Http\Controllers\Web\AuthController;
 use App\Http\Controllers\Web\DepositPhotoController;
 use App\Http\Controllers\Web\PasswordController;
+use App\Http\Controllers\Web\RealtimeTokenController;
 use App\Support\HomeTarget;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -48,4 +49,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/deposits/{deposit}/photo', [DepositPhotoController::class, 'show'])
         ->middleware('role:admin,teacher')
         ->name('deposits.photo');
+
+    // Feed token for the live panel and the speaker app (session cookie;
+    // the app sends Accept: application/json).
+    Route::get('/realtime/token', [RealtimeTokenController::class, 'issue'])
+        ->middleware('role:admin,teacher,station')
+        ->name('realtime.token');
 });

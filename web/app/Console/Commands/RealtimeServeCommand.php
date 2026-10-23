@@ -1,0 +1,475 @@
+<?php
+
+namespace App\Console\Commands;
+
+use App\Enums\UserRole;
+use App\Services\Realtime\Handshake;
+use App\Services\Realtime\RealtimeFeed;
+use App\Services\Realtime\RealtimePairing;
+use App\Services\Realtime\RealtimeRecycling;
+use App\Services\Realtime\RealtimeToken;
+use App\Services\Realtime\TapFeedback;
+use App\Services\Realtime\WsFrame;
+use Illuminate\Console\Command;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * realtime:serve — el feed en vivo por WebSockets.
+ *
+ * Servidor propio (sockets + stream_select, sin dependencias ni
+ * extensiones): sondea `events`, `recycling_updates`,
+ * `pending_pairings` y `tap_feedback`, y empuja frames a los clientes
+ * autenticados con un token HMAC de corta vida.
+ *
+ * Entrega (fija en el plan):
+ *   tap        admin todo · docente sus cursos · estación todo
+ *   recycling  admin todo · docente sus cursos (payload sin class_id a
+ *              todos) · estación todo, sin filtrar
+ *   feedback   admin y estación
+ *   pairing    solo admin (lleva UID de tarjetas)
+ *   hello      historial de cada canal, nunca una señal de audio
+ *
+ * Una cuenta de estudiante no recibe token; si un token forjado llegara
+ * con ese rol, la conexión no recibe nada (falla cerrada).
+ */
+class RealtimeServeCommand extends Command
+{
+    protected $signature = 'realtime:serve
+        {--host= : Interfaz de escucha (por defecto config realtime.host)}
+        {--port= : Puerto (por defecto config realtime.port)}';
+
+    protected $description = 'Sirve el canal en vivo por WebSockets (tap, recycling, feedback, pairing)';
+
+    private const SELECT_TIMEOUT_SECONDS = 0;
+
+    private const SELECT_TIMEOUT_MICRO = 250000;
+
+    private const MAX_HANDSHAKE_BUFFER = 32768;
+
+    /** @var array<int, array{sock: resource, buf: string, handshook: bool, admin: bool, role: string, class_ids: array<int, int>|null}> */
+    private array $clients = [];
+
+    private int $lastEventId = 0;
+
+    private float $lastPollAt = 0.0;
+
+    private string $lastPairingSignature = '';
+
+    private int $lastRecyclingId = 0;
+
+    private int $lastFeedbackId = 0;
+
+    private TapFeedback $tapFeedback;
+
+    private RealtimeFeed $feed;
+
+    private RealtimePairing $pairing;
+
+    private RealtimeRecycling $recycling;
+
+    public function handle(
+        RealtimeFeed $feed,
+        RealtimePairing $pairing,
+        RealtimeRecycling $recycling,
+        TapFeedback $tapFeedback,
+    ): int {
+        $this->feed = $feed;
+        $this->tapFeedback = $tapFeedback;
+        $this->pairing = $pairing;
+        $this->recycling = $recycling;
+
+        $host = (string) ($this->option('host') ?: config('realtime.host'));
+        $port = (int) ($this->option('port') ?: config('realtime.port'));
+        $pollMs = max(50, (int) config('realtime.poll_ms'));
+        $historyLimit = max(1, (int) config('realtime.history_limit'));
+
+        $server = @stream_socket_server("tcp://{$host}:{$port}", $errno, $errstr);
+        if ($server === false) {
+            $this->error("realtime:serve no puede escuchar en {$host}:{$port} — {$errstr} ({$errno}).");
+            $this->error('Puede haber otro servidor en ese puerto.');
+
+            return self::FAILURE;
+        }
+        stream_set_blocking($server, false);
+
+        // Arranca en la cabeza actual: el hello lleva el historial y solo
+        // lo genuinamente nuevo se difunde.
+        $this->lastEventId = $feed->latestEventId();
+        $this->lastPollAt = microtime(true);
+        $this->lastPairingSignature = $pairing->signature();
+        $this->lastRecyclingId = $recycling->latestUpdateId();
+        $this->lastFeedbackId = $tapFeedback->latestId();
+
+        $this->info("realtime:serve escuchando en ws://{$host}:{$port} — sondeo {$pollMs} ms, historial {$historyLimit}, cabeza {$this->lastEventId}.");
+
+        while (true) {
+            $read = [$server];
+            foreach ($this->clients as $client) {
+                $read[] = $client['sock'];
+            }
+            $write = $except = null;
+
+            $ready = @stream_select($read, $write, $except, self::SELECT_TIMEOUT_SECONDS, self::SELECT_TIMEOUT_MICRO);
+            if ($ready === false) {
+                break;
+            }
+
+            foreach ($read as $socket) {
+                if ($socket === $server) {
+                    $this->accept($server);
+                } else {
+                    $this->read($socket);
+                }
+            }
+
+            $this->poll($pollMs);
+        }
+
+        return self::SUCCESS;
+    }
+
+    private function accept($server): void
+    {
+        $new = @stream_socket_accept($server, 0);
+        if ($new === false) {
+            return;
+        }
+        stream_set_blocking($new, false);
+        $this->clients[(int) $new] = [
+            'sock' => $new,
+            'buf' => '',
+            'handshook' => false,
+            'admin' => false,
+            'role' => '',
+            'class_ids' => null,
+        ];
+    }
+
+    private function read($socket): void
+    {
+        $clientId = (int) $socket;
+        if (! isset($this->clients[$clientId])) {
+            return;
+        }
+
+        $data = @fread($socket, 8192);
+        if ($data === false || ($data === '' && feof($socket))) {
+            $this->drop($clientId);
+
+            return;
+        }
+        if ($data === '') {
+            return;
+        }
+
+        $this->clients[$clientId]['buf'] .= $data;
+
+        if (! $this->clients[$clientId]['handshook']) {
+            if (\strlen($this->clients[$clientId]['buf']) > self::MAX_HANDSHAKE_BUFFER) {
+                $this->drop($clientId);
+
+                return;
+            }
+            $this->handshake($clientId, $socket);
+
+            return;
+        }
+
+        while (true) {
+            $result = WsFrame::decode($this->clients[$clientId]['buf']);
+            if ($result['error'] !== null) {
+                $this->drop($clientId);
+
+                return;
+            }
+            if ($result['frame'] === null) {
+                return;
+            }
+            $this->clients[$clientId]['buf'] = substr($this->clients[$clientId]['buf'], $result['consumed']);
+            $this->handleFrame($clientId, $result['frame']);
+            if (! isset($this->clients[$clientId])) {
+                return;
+            }
+        }
+    }
+
+    private function handshake(int $clientId, $socket): void
+    {
+        $buffer = $this->clients[$clientId]['buf'];
+        $headEnd = strpos($buffer, "\r\n\r\n");
+        if ($headEnd === false) {
+            return;
+        }
+
+        $head = substr($buffer, 0, $headEnd);
+        $rest = substr($buffer, $headEnd + 4);
+        $request = Handshake::parseRequest($head);
+
+        $token = $request['query']['token'] ?? null;
+        $userId = RealtimeToken::verify(\is_string($token) ? $token : null);
+
+        if ($userId === null) {
+            @fwrite($socket, Handshake::denialResponse(401, 'Token de feed en vivo inválido o vencido.'));
+            $this->drop($clientId);
+
+            return;
+        }
+
+        if (! Handshake::isUpgrade($request)) {
+            @fwrite($socket, Handshake::denialResponse(426, 'Se requiere una actualización WebSocket.'));
+            $this->drop($clientId);
+
+            return;
+        }
+
+        // Un usuario inexistente se rechaza ANTES del 101 (falla cerrada).
+        $scope = $this->resolveScope($userId);
+        if ($scope === null) {
+            @fwrite($socket, Handshake::denialResponse(401, 'Usuario de feed en vivo desconocido.'));
+            $this->drop($clientId);
+
+            return;
+        }
+
+        $this->clients[$clientId]['admin'] = $scope['admin'];
+        $this->clients[$clientId]['role'] = $scope['role'];
+        $this->clients[$clientId]['class_ids'] = $scope['class_ids'];
+
+        $accept = Handshake::acceptKey($request['headers']['sec-websocket-key']);
+        @fwrite($socket, Handshake::successResponse($accept));
+
+        $this->clients[$clientId]['handshook'] = true;
+        $this->clients[$clientId]['buf'] = $rest;
+
+        $client = $this->clients[$clientId];
+
+        $hello = [
+            'type' => 'hello',
+            'last_id' => $this->lastEventId,
+            'events' => \array_values(\array_filter(
+                $this->feed->recent((int) config('realtime.history_limit')),
+                fn (array $row): bool => $this->clientSeesTap($client, $row),
+            )),
+            'recycling' => \array_values(\array_filter(
+                $this->recycling->recent((int) config('realtime.history_limit')),
+                fn (array $row): bool => $this->clientSeesRecycling($client, $row['payload']),
+            )),
+        ];
+
+        if ($client['admin']) {
+            $hello['pairing'] = $this->pairing->payload();
+        }
+
+        $this->sendJson($socket, $hello);
+    }
+
+    /**
+     * Resuelve el rol y los cursos de una conexión. `null` = usuario
+     * inexistente (401 en el handshake). Cualquier rol no previsto
+     * recibe una lista vacía: no ve nada.
+     *
+     * @return array{admin: bool, role: string, class_ids: array<int, int>|null}|null
+     */
+    private function resolveScope(int $userId): ?array
+    {
+        try {
+            $user = DB::table('users')->where('id', $userId)->first(['id', 'role']);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if ($user === null) {
+            return null;
+        }
+
+        $scope = ['admin' => false, 'role' => (string) $user->role, 'class_ids' => null];
+
+        if ($scope['role'] === UserRole::Admin->value) {
+            $scope['admin'] = true;
+
+            return $scope;
+        }
+
+        if ($scope['role'] === UserRole::Teacher->value) {
+            try {
+                $scope['class_ids'] = DB::table('teacher_class')
+                    ->where('user_id', $userId)
+                    ->pluck('class_id')
+                    ->map(fn ($id) => (int) $id)
+                    ->all();
+            } catch (\Throwable) {
+                $scope['class_ids'] = [];
+            }
+
+            return $scope;
+        }
+
+        if ($scope['role'] === UserRole::Station->value) {
+            return $scope; // sin filtro
+        }
+
+        // Estudiante u otro rol: nunca recibe token, y si llegara uno,
+        // no ve ninguna fila (falla cerrada).
+        $scope['class_ids'] = [];
+
+        return $scope;
+    }
+
+    /** @param  array<string, mixed>  $row */
+    private function clientSeesTap(array $client, array $row): bool
+    {
+        if ($client['role'] === UserRole::Admin->value || $client['role'] === UserRole::Station->value) {
+            return true;
+        }
+
+        if ($client['role'] !== UserRole::Teacher->value) {
+            return false;
+        }
+
+        return $row['class_id'] !== null
+            && in_array((int) $row['class_id'], $client['class_ids'] ?? [], true);
+    }
+
+    /** @param  array<string, mixed>  $payload */
+    private function clientSeesRecycling(array $client, array $payload): bool
+    {
+        if ($client['role'] === UserRole::Admin->value || $client['role'] === UserRole::Station->value) {
+            return true;
+        }
+
+        if ($client['role'] !== UserRole::Teacher->value) {
+            return false;
+        }
+
+        if (! \array_key_exists('class_id', $payload)) {
+            return true; // capture_created / leaderboard_updated: todos
+        }
+
+        return $payload['class_id'] !== null
+            && in_array((int) $payload['class_id'], $client['class_ids'] ?? [], true);
+    }
+
+    /** @param  array{fin: bool, opcode: int, payload: string}  $frame */
+    private function handleFrame(int $clientId, array $frame): void
+    {
+        match ($frame['opcode']) {
+            WsFrame::OP_CLOSE => $this->drop($clientId),
+            WsFrame::OP_PING => $this->write($clientId, WsFrame::encode($frame['payload'], WsFrame::OP_PONG)),
+            WsFrame::OP_PONG, WsFrame::OP_TEXT, WsFrame::OP_BINARY, WsFrame::OP_CONT => null,
+            default => $this->drop($clientId),
+        };
+    }
+
+    private function poll(int $pollMs): void
+    {
+        $interval = $pollMs / 1000.0;
+        if ((microtime(true) - $this->lastPollAt) < $interval) {
+            return;
+        }
+        $this->lastPollAt = microtime(true);
+
+        // ---- tap ----------------------------------------------------
+        try {
+            $rows = $this->feed->eventsAfter($this->lastEventId);
+        } catch (QueryException) {
+            DB::purge();
+
+            return;
+        }
+
+        foreach ($rows as $row) {
+            $this->lastEventId = $row['id'];
+            $frame = WsFrame::encode(json_encode(['type' => 'tap', 'event' => $row], JSON_UNESCAPED_UNICODE));
+            foreach ($this->clients as $clientId => $client) {
+                if ($client['handshook'] && $this->clientSeesTap($client, $row)) {
+                    $this->write($clientId, $frame);
+                }
+            }
+        }
+
+        // ---- pairing (solo admin) ----------------------------------
+        try {
+            $signature = $this->pairing->signature();
+        } catch (QueryException) {
+            DB::purge();
+
+            return;
+        }
+
+        if ($signature !== $this->lastPairingSignature) {
+            $this->lastPairingSignature = $signature;
+            $frame = WsFrame::encode(json_encode(['type' => 'pairing'] + $this->pairing->payload(), JSON_UNESCAPED_UNICODE));
+            foreach ($this->clients as $clientId => $client) {
+                if ($client['handshook'] && $client['admin']) {
+                    $this->write($clientId, $frame);
+                }
+            }
+        }
+
+        // ---- recycling ---------------------------------------------
+        try {
+            $updates = $this->recycling->updatesAfter($this->lastRecyclingId);
+        } catch (QueryException) {
+            DB::purge();
+
+            return;
+        }
+
+        foreach ($updates as $update) {
+            $this->lastRecyclingId = $update['id'];
+            $frame = WsFrame::encode(json_encode(
+                ['type' => 'recycling', 'update' => $update],
+                JSON_UNESCAPED_UNICODE,
+            ));
+            foreach ($this->clients as $clientId => $client) {
+                if ($client['handshook'] && $this->clientSeesRecycling($client, $update['payload'])) {
+                    $this->write($clientId, $frame);
+                }
+            }
+        }
+
+        // ---- feedback (admin + estación) ---------------------------
+        try {
+            $cues = $this->tapFeedback->after($this->lastFeedbackId);
+        } catch (QueryException) {
+            DB::purge();
+
+            return;
+        }
+
+        foreach ($cues as $cue) {
+            $this->lastFeedbackId = $cue['id'];
+            $frame = WsFrame::encode(json_encode(['type' => 'feedback', 'feedback' => $cue], JSON_UNESCAPED_UNICODE));
+            foreach ($this->clients as $clientId => $client) {
+                if ($client['handshook']
+                    && in_array($client['role'], [UserRole::Admin->value, UserRole::Station->value], true)) {
+                    $this->write($clientId, $frame);
+                }
+            }
+        }
+    }
+
+    private function sendJson($socket, array $message): void
+    {
+        $this->write((int) $socket, WsFrame::encode(json_encode($message, JSON_UNESCAPED_UNICODE)));
+    }
+
+    private function write(int $clientId, string $frame): void
+    {
+        if (! isset($this->clients[$clientId])) {
+            return;
+        }
+        if (@fwrite($this->clients[$clientId]['sock'], $frame) === false) {
+            $this->drop($clientId);
+        }
+    }
+
+    private function drop(int $clientId): void
+    {
+        if (isset($this->clients[$clientId])) {
+            @fclose($this->clients[$clientId]['sock']);
+            unset($this->clients[$clientId]);
+        }
+    }
+}

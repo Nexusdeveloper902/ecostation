@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\RecyclingCaptureController;
 use App\Http\Controllers\Api\V1\RecyclingClassificationController;
 use App\Http\Controllers\Api\V1\TapEventController;
+use App\Http\Controllers\Web\RealtimeTokenController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -36,6 +37,11 @@ Route::prefix('v1')->group(function () {
         Route::get('/recycling/leaderboard', [LeaderboardController::class, 'show'])
             ->middleware('role:admin,teacher,student')
             ->name('api.v1.recycling.leaderboard');
+
+        // Future token-based speaker: Sanctum station only.
+        Route::get('/realtime/token', [RealtimeTokenController::class, 'issue'])
+            ->middleware('role:station')
+            ->name('api.v1.realtime.token');
     });
 
     // Station devices (Pulse-HMAC).

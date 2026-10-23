@@ -53,10 +53,10 @@ class EnsurePasswordChanged
             return $next($request);
         }
 
-        // Match the app's own JSON verdict (bootstrap exceptions: api/* OR
-        // expectsJson) — a browser visit to an api/* path must 403, never
-        // 302 to a Blade page.
-        if ($request->is('api/*') || $request->expectsJson()) {
+        // api/* keeps the app's JSON verdict; a web page (even one asked
+        // for JSON, like the speaker's /realtime/token) keeps the redirect
+        // the plans pin, so a flagged account cannot mint a feed token.
+        if ($request->is('api/*')) {
             abort(403, __('api.password_change_required'));
         }
 
