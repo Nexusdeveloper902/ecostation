@@ -2,10 +2,9 @@
 
 namespace Tests\Feature\Api;
 
-use App\Models\Reader;
+use App\Models\PresenceEvent;
 use App\Services\DeviceAuth\DeviceRequestSigner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
@@ -16,10 +15,10 @@ use Tests\TestCase;
  * firmware). The reader secret never rides the wire: every request
  * carries `Authorization: Pulse-HMAC <kid>:<nonce>:<sig>`.
  *
- * Task 4 proves the scheme over real HTTP through the real middleware
- * against a throwaway probe route; Task 6 moves the happy path onto the
- * real tap endpoint. The classify/capture cases stay deferred until
- * Tasks 9 and 10.
+ * These tests prove over real HTTP through the real middleware that a
+ * legitimately signed device authenticates, wrong secrets / tampered
+ * bodies / unknown fingerprints fail closed, replayed requests are
+ * rejected, and the legacy bench Bearer still works.
  */
 class DeviceHmacAuthTest extends TestCase
 {
@@ -29,28 +28,25 @@ class DeviceHmacAuthTest extends TestCase
     {
         parent::setUp();
         $this->seedDemo();
-
-        // Task 4 has no tap/classify route yet; this probe proves reader.auth
-        // end to end. Removed in Task 6.
-        Route::middleware('reader.auth')->post('/api/v1/_probe', fn () => ['ok' => true]);
+        PresenceEvent::query()->delete();
     }
 
-    private function signedPost(
-        string $body,
+    private function signedTap(
+        string $uid,
         ?string $nonce = null,
         ?string $secret = null,
-        string $path = '/api/v1/_probe',
     ): TestResponse {
         $reader = $this->reader();
+        $body = json_encode(['credential_uid' => $uid]);
         $nonce ??= Str::random(32);
         $secret ??= $this->readerToken();
 
-        $sig = DeviceRequestSigner::sign($secret, 'POST', $path, $body, $nonce);
+        $sig = DeviceRequestSigner::sign($secret, 'POST', '/api/v1/events/tap', $body, $nonce);
         $kid = DeviceRequestSigner::fingerprint($secret);
 
         return $this->call(
             'POST',
-            $path,
+            '/api/v1/events/tap',
             [],
             [],
             [],
@@ -64,17 +60,28 @@ class DeviceHmacAuthTest extends TestCase
     }
 
     #[Test]
-    public function a_legitimately_signed_device_authenticates(): void
+    public function a_legitimately_signed_device_taps_successfully(): void
     {
-        $response = $this->signedPost(json_encode(['probe' => 'ok']));
+        $response = $this->signedTap($this->cardUidFor('Maria González'));
 
-        $response->assertOk()->assertJson(['ok' => true]);
+        $response->assertOk()
+            ->assertJson([
+                'status' => 'ok',
+                'event_type' => 'RECYCLING_DEPOSIT',
+                'duplicate' => false,
+                'next_step' => 'awaiting_classification',
+            ]);
+
+        $this->assertDatabaseCount('events', 1);
     }
 
     #[Test]
     public function a_wrong_secret_is_rejected_without_touching_state(): void
     {
-        $response = $this->signedPost(json_encode(['probe' => 'ok']), secret: 'wrong-secret-000000000000000001');
+        $response = $this->signedTap(
+            $this->cardUidFor('Maria González'),
+            secret: 'wrong-secret-000000000000000001',
+        );
 
         $response->assertUnauthorized()
             ->assertJson(['status' => 'error', 'message' => 'Firma de dispositivo no válida']);
@@ -86,14 +93,15 @@ class DeviceHmacAuthTest extends TestCase
     public function a_tampered_body_invalidates_the_captured_signature(): void
     {
         // Sign body A, send body B with the same header: the signature is
-        // body-bound, so the request dies at the middleware.
+        // body-bound, so the request dies at the middleware — before any
+        // card lookup, before any write.
         $reader = $this->reader();
         $nonce = Str::random(32);
-        $sig = DeviceRequestSigner::sign($this->readerToken(), 'POST', '/api/v1/_probe', json_encode(['probe' => 'A']), $nonce);
+        $sig = DeviceRequestSigner::sign($this->readerToken(), 'POST', '/api/v1/events/tap', json_encode(['credential_uid' => 'AAA']), $nonce);
 
         $response = $this->call(
             'POST',
-            '/api/v1/_probe',
+            '/api/v1/events/tap',
             [],
             [],
             [],
@@ -102,10 +110,12 @@ class DeviceHmacAuthTest extends TestCase
                 'HTTP_ACCEPT' => 'application/json',
                 'HTTP_AUTHORIZATION' => 'Pulse-HMAC '.DeviceRequestSigner::fingerprint($reader->api_key).":{$nonce}:{$sig}",
             ],
-            json_encode(['probe' => 'B'])
+            json_encode(['credential_uid' => $this->cardUidFor('Maria González')])
         );
 
         $response->assertUnauthorized()->assertJson(['status' => 'error']);
+
+        $this->assertDatabaseCount('events', 0);
     }
 
     #[Test]
@@ -114,37 +124,53 @@ class DeviceHmacAuthTest extends TestCase
         // The exact bytes of a legitimate request, captured off the wire
         // and replayed: the single-use nonce is already spent.
         $reader = $this->reader();
-        $body = json_encode(['probe' => 'ok']);
+        $body = json_encode(['credential_uid' => $this->cardUidFor('Maria González')]);
         $nonce = Str::random(32);
         $server = [
             'CONTENT_TYPE' => 'application/json',
             'HTTP_ACCEPT' => 'application/json',
-            'HTTP_AUTHORIZATION' => DeviceRequestSigner::authorizationHeader($reader, 'POST', '/api/v1/_probe', $body, $nonce),
+            'HTTP_AUTHORIZATION' => DeviceRequestSigner::authorizationHeader($reader, 'POST', '/api/v1/events/tap', $body, $nonce),
         ];
 
-        $this->call('POST', '/api/v1/_probe', [], [], [], $server, $body)->assertOk();
+        $this->call('POST', '/api/v1/events/tap', [], [], [], $server, $body)->assertOk();
+        $this->assertDatabaseCount('events', 1);
 
-        $this->call('POST', '/api/v1/_probe', [], [], [], $server, $body)
+        $this->call('POST', '/api/v1/events/tap', [], [], [], $server, $body)
             ->assertUnauthorized()
             ->assertJson(['status' => 'error', 'message' => 'Firma de dispositivo no válida']);
+        $this->assertDatabaseCount('events', 1);
     }
 
     #[Test]
     public function reconnects_are_stateless_fresh_nonce_per_request_always_passes(): void
     {
         // A device that changed IP, rebooted, or re-discovered the backend
-        // carries no session: every request is self-contained.
+        // carries no session: every request is self-contained, so nine
+        // sequential taps authenticate — topology changes are invisible.
+        $uids = [
+            $this->cardUidFor('Maria González'),
+            $this->cardUidFor('Carlos Pérez'),
+            $this->cardUidFor('Ana Martínez'),
+        ];
+
         for ($i = 0; $i < 9; $i++) {
-            $this->signedPost(json_encode(['probe' => $i]))->assertOk();
+            $this->signedTap($uids[$i % 3])->assertOk();
         }
+
+        // Every recycling tap is a separate physical deposit.
+        $this->assertDatabaseCount('events', 9);
     }
 
     #[Test]
     public function the_legacy_bench_bearer_still_works(): void
     {
-        $this->postJson('/api/v1/_probe', ['probe' => 'ok'], [
-            'Authorization' => 'Bearer '.$this->readerToken(),
-        ])->assertOk()->assertJson(['ok' => true]);
+        $this->postJson('/api/v1/events/tap', [
+            'credential_uid' => $this->cardUidFor('Maria González'),
+        ], ['Authorization' => 'Bearer '.$this->readerToken()])
+            ->assertOk()
+            ->assertJson(['status' => 'ok']);
+
+        $this->assertDatabaseCount('events', 1);
     }
 
     #[Test]
@@ -152,17 +178,20 @@ class DeviceHmacAuthTest extends TestCase
     {
         config(['ecostation.device_auth.allow_legacy_bearer' => false]);
 
-        $this->postJson('/api/v1/_probe', ['probe' => 'ok'], [
-            'Authorization' => 'Bearer '.$this->readerToken(),
-        ])->assertUnauthorized();
+        $this->postJson('/api/v1/events/tap', [
+            'credential_uid' => $this->cardUidFor('Maria González'),
+        ], ['Authorization' => 'Bearer '.$this->readerToken()])
+            ->assertUnauthorized();
 
-        $this->signedPost(json_encode(['probe' => 'ok']))->assertOk();
+        $this->signedTap($this->cardUidFor('Maria González'))->assertOk();
+
+        $this->assertDatabaseCount('events', 1);
     }
 
     #[Test]
     public function unknown_fingerprints_and_malformed_headers_fail_closed(): void
     {
-        $body = json_encode(['probe' => 'ok']);
+        $body = json_encode(['credential_uid' => $this->cardUidFor('Maria González')]);
         $serverFor = fn (string $auth): array => [
             'CONTENT_TYPE' => 'application/json',
             'HTTP_ACCEPT' => 'application/json',
@@ -170,15 +199,17 @@ class DeviceHmacAuthTest extends TestCase
         ];
 
         // Fingerprint of a secret no reader holds.
-        $this->call('POST', '/api/v1/_probe', [], [], [], $serverFor(
+        $this->call('POST', '/api/v1/events/tap', [], [], [], $serverFor(
             'Pulse-HMAC deadbeefdeadbeef:'.Str::random(32).':'.str_repeat('0', 64)
         ), $body)->assertUnauthorized();
 
         // Truncated / garbage shapes.
-        $this->call('POST', '/api/v1/_probe', [], [], [], $serverFor('Pulse-HMAC short'), $body)
+        $this->call('POST', '/api/v1/events/tap', [], [], [], $serverFor('Pulse-HMAC short'), $body)
             ->assertUnauthorized();
-        $this->call('POST', '/api/v1/_probe', [], [], [], $serverFor('Pulse-HMAC :'.Str::random(32).':'.str_repeat('0', 64)), $body)
+        $this->call('POST', '/api/v1/events/tap', [], [], [], $serverFor('Pulse-HMAC :'.Str::random(32).':'.str_repeat('0', 64)), $body)
             ->assertUnauthorized();
+
+        $this->assertDatabaseCount('events', 0);
     }
 
     #[Test]
