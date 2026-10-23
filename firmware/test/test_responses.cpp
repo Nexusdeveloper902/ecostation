@@ -5,6 +5,7 @@
 
 #include <string>
 
+#include "Modes.h"
 #include "ResponseParser.h"
 
 // --- helpers ---------------------------------------------------------------
@@ -200,6 +201,9 @@ void test_pair_phone_proof_refused_403(void) {
         EcoStation::parsePairResponse(403, errBody("Phone credential could not be verified"));
     TEST_ASSERT_EQUAL_INT(static_cast<int>(EcoStation::PairOutcome::ProofRejected),
                           static_cast<int>(r.outcome));
+    EcoStation::PairingMode mode;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(EcoStation::FeedbackKind::PairAlreadyPaired),
+                          static_cast<int>(mode.interpret(r).kind));
 }
 
 void test_capture_id_is_parsed(void) {

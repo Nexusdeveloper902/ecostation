@@ -46,13 +46,9 @@ static_assert(XCLK_GPIO_NUM == 0, "camera XCLK");
 static_assert(SIOD_GPIO_NUM == 26, "camera SIOD");
 static_assert(VSYNC_GPIO_NUM == 25, "camera VSYNC");
 
-// TODO(Task 3): the FeedbackPatterns tests (station_capture_success_has_solid_pattern,
-// station_idle_patterns_are_mostly_off, station_degraded_pattern_is_distinct)
-// need FeedbackPatterns.h. They are disabled until Task 3 ports it.
-#if 0
 #include "FeedbackPatterns.h"
 static void station_capture_success_has_solid_pattern() {
-    auto pattern = Presence::eventLedPattern(Presence::FeedbackKind::CaptureSuccess);
+    auto pattern = EcoStation::eventLedPattern(EcoStation::FeedbackKind::CaptureSuccess);
     TEST_ASSERT_FALSE(pattern.empty());
     TEST_ASSERT_EQUAL_size_t(1, pattern.size());
     TEST_ASSERT_TRUE(pattern[0].on);
@@ -63,11 +59,11 @@ static void station_capture_success_has_solid_pattern() {
 // the heartbeat grammar). If a pattern ever becomes mostly-ON, the LED
 // would read as "unexpectedly lit" and this test fails at compile-run time.
 static void station_idle_patterns_are_mostly_off() {
-    auto states = {Presence::FeedbackKind::IdleOperation,
-                   Presence::FeedbackKind::IdlePairing,
-                   Presence::FeedbackKind::StationDegraded};
+    auto states = {EcoStation::FeedbackKind::IdleOperation,
+                   EcoStation::FeedbackKind::IdlePairing,
+                   EcoStation::FeedbackKind::StationDegraded};
     for (auto state : states) {
-        auto pattern = Presence::modeLedPattern(state);
+        auto pattern = EcoStation::modeLedPattern(state);
         uint32_t onMs = 0, offMs = 0;
         for (auto& phase : pattern) {
             (phase.on ? onMs : offMs) += phase.durationMs;
@@ -78,16 +74,15 @@ static void station_idle_patterns_are_mostly_off() {
 }
 
 static void station_degraded_pattern_is_distinct() {
-    auto degraded = Presence::modeLedPattern(Presence::FeedbackKind::StationDegraded);
-    auto op = Presence::modeLedPattern(Presence::FeedbackKind::IdleOperation);
-    auto pair = Presence::modeLedPattern(Presence::FeedbackKind::IdlePairing);
-    auto boot = Presence::modeLedPattern(Presence::FeedbackKind::BootConnecting);
+    auto degraded = EcoStation::modeLedPattern(EcoStation::FeedbackKind::StationDegraded);
+    auto op = EcoStation::modeLedPattern(EcoStation::FeedbackKind::IdleOperation);
+    auto pair = EcoStation::modeLedPattern(EcoStation::FeedbackKind::IdlePairing);
+    auto boot = EcoStation::modeLedPattern(EcoStation::FeedbackKind::BootConnecting);
     TEST_ASSERT_FALSE(degraded.empty());
     TEST_ASSERT_TRUE(degraded != op);
     TEST_ASSERT_TRUE(degraded != pair);
     TEST_ASSERT_TRUE(degraded != boot);
 }
-#endif
 
 // Compile-time pins above already run when this file builds; this runtime
 // test makes the native suite report them as a case.
@@ -96,8 +91,8 @@ static void station_config_compiles() {
 }
 
 void runStationConfigTests() {
-    // RUN_TEST(station_capture_success_has_solid_pattern);   // Task 3
-    // RUN_TEST(station_degraded_pattern_is_distinct);        // Task 3
-    // RUN_TEST(station_idle_patterns_are_mostly_off);        // Task 3
+    RUN_TEST(station_capture_success_has_solid_pattern);
+    RUN_TEST(station_degraded_pattern_is_distinct);
+    RUN_TEST(station_idle_patterns_are_mostly_off);
     RUN_TEST(station_config_compiles);
 }

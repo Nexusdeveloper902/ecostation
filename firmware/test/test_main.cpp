@@ -13,6 +13,10 @@ void runPayloadTests();
 void runResponseTests();
 void runCapturePayloadTests();
 void runStationConfigTests();
+void runModeTests();
+void runDebounceTests();
+void runConsoleTests();
+void runCaptureTriggerTests();
 
 // Compartido por todas las pruebas (Unity llama estas funciones en cada RUN_TEST).
 void setUp() {}
@@ -27,6 +31,10 @@ int main() {
     runResponseTests();        // lectura de respuestas del servidor
     runCapturePayloadTests();  // bytes multipart + canónicos de firma
     runStationConfigTests();  // mapa de hardware de la estación
+    runModeTests();            // estrategias de modo + mapeo de feedback
+    runDebounceTests();        // antirrebote de tarjeta + patrones LED
+    runConsoleTests();         // consola serial (LineBuffer + ModeConsole)
+    runCaptureTriggerTests();  // disparador de captura (disciplina de línea + enfriamiento)
 
     return UNITY_END();
 }
