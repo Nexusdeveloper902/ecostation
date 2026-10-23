@@ -772,8 +772,9 @@ below. Every "port" step means:
     - `top(int $limit = 10): array<int, array{rank,student_id,student_name,class_name,points}>`;
     - `rankOf(Student $s): array{rank: ?int, points: int}`;
     - `snapshot(int $limit = 3): array`;
-    - **new** `classes(): array<int, array{rank: int, class_id: int, class_name: string, students: int, points: int}>`.
-      Every class appears. Classes are ranked by total ledger points, then
+    - **new** `classes(): array<int, array{rank: int, class_id: int, class_name: string, students: int, points: int, avg_points: float}>`.
+      Every class appears. `avg_points = round(points / max(students, 1), 1)`.
+      Classes are ranked by **`avg_points`** (user decision: it's fair to small classes), then
       by `class_id` ascending, using competition ranks. Reuse the existing
       rank-stamping routine.
   - `ClassificationService::classifyAndAward(Reader $reader, PresenceEvent $event, string $imagePath, ?string $storedPath = null, ?callable $insideAwardTx = null): array{duplicate: bool, deposit: RecyclingDeposit, new_balance: int}`.
@@ -816,16 +817,18 @@ below. Every "port" step means:
   - Add the class-ranking test:
 
 ```php
-#[Test] public function classes_rank_by_total_points_with_every_class_listed(): void
+#[Test] public function classes_rank_by_average_points_per_student_with_every_class_listed(): void
 {
     $this->seedDemo();
     PointsLedger::create(['student_id' => $this->cardOf('Diego López')->student_id, 'delta' => 15, 'reason' => 'recycling_deposit']);
-    PointsLedger::create(['student_id' => $this->cardOf('Maria González')->student_id, 'delta' => 10, 'reason' => 'recycling_deposit']);
+    PointsLedger::create(['student_id' => $this->cardOf('Maria González')->student_id, 'delta' => 22, 'reason' => 'recycling_deposit']);
     $board = app(LeaderboardService::class)->classes();
+    // 5° A has more total points (22 vs 15) but a lower average (7.3 vs 7.5).
     $this->assertSame(['5° B', '5° A'], array_column($board, 'class_name'));
     $this->assertSame([1, 2], array_column($board, 'rank'));
     $this->assertSame([2, 3], array_column($board, 'students'));
-    $this->assertSame([15, 10], array_column($board, 'points'));
+    $this->assertSame([15, 22], array_column($board, 'points'));
+    $this->assertSame([7.5, 7.3], array_column($board, 'avg_points'));
 }
 ```
 
