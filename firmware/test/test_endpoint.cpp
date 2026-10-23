@@ -122,17 +122,36 @@ static void manual_url_is_normalized() {
     TEST_ASSERT_EQUAL_STRING("http://192.168.1.50:8000", out.c_str());
     TEST_ASSERT_TRUE(validManualServerUrl("http://10.0.0.5", out));
     TEST_ASSERT_EQUAL_STRING("http://10.0.0.5:80", out.c_str());
+    // A DNS/mDNS name with at least two labels is a usable server address.
+    TEST_ASSERT_TRUE(validManualServerUrl("servidor.local:8000", out));
+    TEST_ASSERT_EQUAL_STRING("http://servidor.local:8000", out.c_str());
+    TEST_ASSERT_TRUE(validManualServerUrl("http://ecostation.local", out));
+    TEST_ASSERT_EQUAL_STRING("http://ecostation.local:80", out.c_str());
 }
 
 static void manual_url_rejects_unusable_addresses() {
     std::string out = "untouched";
-    const char* bad[] = {"http://localhost:8000", "127.0.0.1:8000", "http://0.0.0.0:8000",
+    const char* bad[] = {"http://localhost:8000", "http://LOCALHOST:8000", "127.0.0.1:8000",
+                         "http://0.0.0.0:8000", "http://0.0.1.2:8000", "0:8000",
+                         "http://user:pass@10.0.0.5:8000", "basura", "http://-.-:8000",
                          "https://10.0.0.5", "http://10.0.0.5:99999", "http://:8000", "", "basura::",
+                         "http://192.168.01.50:8000",
                          "http://10.0.0.5:8000/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};
     for (const char* b : bad) {
         TEST_ASSERT_FALSE_MESSAGE(validManualServerUrl(b, out), b);
     }
     TEST_ASSERT_EQUAL_STRING("untouched", out.c_str());
+}
+
+// A 20+ digit port must never wrap back into a usable value.
+static void endpoint_rejects_port_overflow() {
+    TEST_ASSERT_FALSE(
+        EcoStationEndpoint::fromBaseUrl("http://10.0.0.5:92233720368547758095").valid);
+    TEST_ASSERT_FALSE(EcoStationEndpoint::fromBaseUrl("http://10.0.0.5:65536").valid);
+    TEST_ASSERT_TRUE(EcoStationEndpoint::fromBaseUrl("http://10.0.0.5:65535").valid);
+    std::string out;
+    TEST_ASSERT_FALSE(validManualServerUrl("10.0.0.5:92233720368547758095", out));
+    TEST_ASSERT_FALSE(validManualServerUrl("h:92233720368547758095", out));
 }
 
 static void console_url_pins_the_server() {
@@ -159,5 +178,6 @@ void runEndpointTests() {
     RUN_TEST(mdns_identity_is_ecostation);
     RUN_TEST(manual_url_is_normalized);
     RUN_TEST(manual_url_rejects_unusable_addresses);
+    RUN_TEST(endpoint_rejects_port_overflow);
     RUN_TEST(console_url_pins_the_server);
 }

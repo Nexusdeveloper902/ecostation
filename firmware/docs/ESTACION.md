@@ -98,11 +98,21 @@ Comandos:
 | `s 192.168.1.50:8000` | valida, normaliza a `http://…`, la fija y **la guarda tras reiniciar** |
 | `s -` | borra la dirección guardada y vuelve a mDNS/`API_BASE_URL` |
 
-Se acepta `http://IP:puerto` o `IP:puerto` (se añade el esquema). Se
-rechazan `https://`, `localhost`, `127.*`, `0.0.0.0`, puertos fuera de
-rango y direcciones de más de 64 caracteres. Una dirección fijada por
-consola **nunca** es sobrescrita por mDNS. Con `MDNS_DISCOVERY 0` la
-estación solo usa la dirección manual o `API_BASE_URL`.
+Se acepta `http://IP:puerto`, `IP:puerto` (se añade el esquema) o un
+nombre DNS/mDNS con al menos dos etiquetas, por ejemplo
+`servidor.local:8000`. Se rechazan `https://`, `localhost` (también en
+mayúsculas), `127.*`, `0.0.*`, `0`, `0.0.0.0`, nombres de una sola
+etiqueta (`basura`), credenciales (`usuario:clave@IP`), espacios,
+corchetes IPv6, puertos fuera de rango y direcciones de más de 64
+caracteres. Una ruta pegada tras el puerto se descarta al normalizar. Una
+dirección fijada por consola **nunca** es sobrescrita por mDNS. Con
+`MDNS_DISCOVERY 0` la estación solo usa la dirección manual o
+`API_BASE_URL`.
+
+Límite efectivo al teclear: el búfer de la línea serie es de **64
+caracteres e incluye el prefijo `s `**, así que la URL tecleada más larga
+es de **62 caracteres**. Una línea más larga se descarta entera (no se
+trunca); el validador admite hasta 64 por otras vías.
 
 ---
 

@@ -117,11 +117,12 @@ void Station::begin() {
 
     // The operator may have pinned a server with `s <url>` on a past boot.
     prefs_.begin("ecostation", false);
-    std::string stored = prefs_.getString("server", "").c_str();
-    if (!validManualServerUrl(stored, stored)) {
-        stored.clear();  // corrupt/legacy value: fall back to discovery/secrets
+    const std::string stored = prefs_.getString("server", "").c_str();
+    std::string normalized;
+    if (!validManualServerUrl(stored, normalized)) {
+        normalized.clear();  // corrupt/legacy value: fall back to discovery/secrets
     }
-    consoleUrl_ = stored;
+    consoleUrl_ = normalized;
 
     selectServer();
 
@@ -616,7 +617,12 @@ void Station::handleCaptureCommand(const CaptureCommand& cmd) {
             // and must be REFUSED, or the operator waits forever for a photo
             // that no armed state will ever produce.
             if (!flow_.armFromConsole(cmd.arg, millis())) {
-                Serial.println("[STATION] id de evento inválido — el modo tarjeta-primero necesita un id positivo del registro");
+                if (flow_.pendingCaptureId() > 0) {
+                    Serial.printf("[STATION] hay una captura pendiente %ld — asóciala (tarjeta o 'a <uid>') antes de armar un evento\n",
+                                  flow_.pendingCaptureId());
+                } else {
+                    Serial.println("[STATION] id de evento inválido — el modo tarjeta-primero necesita un id positivo del registro");
+                }
                 return;
             }
             Serial.printf("[STATION] clasificación tarjeta-primero armada para el evento %ld (auto-captura en %lus, BOTÓN/ENTER ya)\n",
@@ -644,10 +650,12 @@ void Station::handleCaptureCommand(const CaptureCommand& cmd) {
             }
             std::string norm;
             if (!validManualServerUrl(cmd.arg, norm)) {
-                Serial.println("[SERVIDOR] dirección inválida — usa http://IP:puerto de la LAN (nunca localhost)");
+                Serial.println("[SERVIDOR] dirección inválida — usa http://IP-o-nombre.local:puerto de la LAN (nunca localhost)");
                 return;
             }
-            prefs_.putString("server", norm.c_str());
+            if (prefs_.putString("server", norm.c_str()) == 0) {
+                Serial.println("[SERVIDOR] aviso: no se pudo guardar la dirección en NVS — se usará hasta reiniciar");
+            }
             consoleUrl_ = norm;
             api_.setBaseUrl(norm);
             Serial.print("[SERVIDOR] dirección fijada: ");

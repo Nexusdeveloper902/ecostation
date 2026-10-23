@@ -44,7 +44,7 @@
 // --- Station feedback: one LED (above), no buzzer ---------------
 #define PIN_CAM_BUZZER    -1    // no free pin on this bench (GPIO4 is the flash LED)
 
-// --- LED diagnostics quick reference (full table in docs/HARDWARE_SETUP.md) -
+// --- LED diagnostics quick reference (full table in docs/ESTACION.md §8) ----
 //   white flash LED solid ON → pre-2026-09-07 build or RC522 RST still
 //       wired to GPIO4 (it must be strapped to 3V3);
 //   red LED SOLID ON → the board is likely an inverted-polarity clone →

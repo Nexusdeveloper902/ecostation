@@ -91,6 +91,11 @@ struct EcoStationEndpoint {
                 if (portStr[i] < '0' || portStr[i] > '9') {
                     return out;
                 }
+                // Bound BEFORE multiplying: a 20+ digit port would otherwise
+                // overflow long and could wrap back into a "valid" value.
+                if (port > 65535) {
+                    return out;
+                }
                 port = port * 10 + (portStr[i] - '0');
             }
             if (port <= 0 || port > 65535) {
@@ -137,17 +142,140 @@ inline bool pickEcoStationEndpoint(const EcoStationCandidate* candidates,
 
 // --- Manual server address (operator fallback, `s <url>`) ------------------
 
+/** ASCII-only lowercase (locale-independent; the device stays C++11-safe). */
+inline std::string lowerAscii(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    for (size_t i = 0; i < text.size(); ++i) {
+        char c = text[i];
+        if (c >= 'A' && c <= 'Z') {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
+        out += c;
+    }
+    return out;
+}
+
+/** Exactly four decimal octets, each 0-255, no leading zeros ("01" is out). */
+inline bool isStrictIpv4Literal(const std::string& host) {
+    int octets = 0;
+    size_t start = 0;
+    while (true) {
+        const size_t dot = host.find('.', start);
+        const std::string part =
+            (dot == std::string::npos) ? host.substr(start)
+                                       : host.substr(start, dot - start);
+        if (part.empty() || part.size() > 3) {
+            return false;
+        }
+        int value = 0;
+        for (size_t i = 0; i < part.size(); ++i) {
+            if (part[i] < '0' || part[i] > '9') {
+                return false;
+            }
+            value = value * 10 + (part[i] - '0');
+        }
+        if (value > 255) {
+            return false;
+        }
+        if (part.size() > 1 && part[0] == '0') {
+            return false;
+        }
+        ++octets;
+        if (dot == std::string::npos) {
+            break;
+        }
+        start = dot + 1;
+    }
+    return octets == 4;
+}
+
+/** DNS/mDNS name: >= 2 labels, [A-Za-z0-9-], no edge hyphen, length caps. */
+inline bool isDnsOrMdnsName(const std::string& host) {
+    if (host.size() > 253) {
+        return false;
+    }
+    int labels = 0;
+    size_t start = 0;
+    while (true) {
+        const size_t dot = host.find('.', start);
+        const std::string label =
+            (dot == std::string::npos) ? host.substr(start)
+                                       : host.substr(start, dot - start);
+        if (label.empty() || label.size() > 63) {
+            return false;
+        }
+        if (label.front() == '-' || label.back() == '-') {
+            return false;
+        }
+        for (size_t i = 0; i < label.size(); ++i) {
+            const char c = label[i];
+            const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                            (c >= '0' && c <= '9') || c == '-';
+            if (!ok) {
+                return false;
+            }
+        }
+        ++labels;
+        if (dot == std::string::npos) {
+            break;
+        }
+        start = dot + 1;
+    }
+    return labels >= 2;
+}
+
+/**
+ * A manual host is either a strict IPv4 literal or a dotted DNS/mDNS name.
+ * Userinfo, whitespace, paths, IPv6 brackets and the device's own/loopback
+ * addresses are refused before either form is considered.
+ */
+inline bool validManualHost(const std::string& host) {
+    if (host.empty()) {
+        return false;
+    }
+    if (host.find_first_of("@ \t\r\n/\\:[]") != std::string::npos) {
+        return false;
+    }
+    const std::string lower = lowerAscii(host);
+    if (lower == "localhost" || lower == "0" || lower == "0.0.0.0") {
+        return false;
+    }
+    if (lower.compare(0, 4, "127.") == 0 ||
+        lower.compare(0, 4, "0.0.") == 0) {
+        return false;
+    }
+    // Digits-and-dots only means the operator typed an IPv4 literal: it
+    // must pass the strict octet rules, never sneak through as a "DNS name"
+    // (which would accept 192.168.01.50 or 1.2).
+    bool digitsAndDotsOnly = true;
+    for (size_t i = 0; i < lower.size(); ++i) {
+        const char c = lower[i];
+        if ((c < '0' || c > '9') && c != '.') {
+            digitsAndDotsOnly = false;
+            break;
+        }
+    }
+    if (digitsAndDotsOnly) {
+        return isStrictIpv4Literal(lower);
+    }
+    return isDnsOrMdnsName(lower);
+}
+
 /**
  * Validate a manually typed server address and normalize it.
  *
  * Accepted: "host:port", "host" and "http://host[:port]" — a bare
- * host:port becomes "http://host:port". Rejected: HTTPS (the firmware
- * speaks plain HTTP), localhost/loopback/bind-all hosts (the device
- * would talk to itself), empty or unparseable text, out-of-range ports
- * and anything longer than ECOSTATION_SERVER_URL_MAX.
+ * host:port becomes "http://host:port". The host must be a strict IPv4
+ * literal or a dotted DNS/mDNS name (at least two labels). Rejected:
+ * HTTPS (the firmware speaks plain HTTP), localhost/loopback/bind-all
+ * hosts (the device would talk to itself), userinfo (`user:pass@…`),
+ * whitespace/paths/brackets, single-label garbage, out-of-range ports
+ * (including 20+ digit overflows) and anything longer than
+ * ECOSTATION_SERVER_URL_MAX.
  *
- * On success normalizedOut = endpoint.baseUrl(); on failure it is left
- * untouched (callers keep the address they already had).
+ * On success normalizedOut = endpoint.baseUrl() with a lowercase host;
+ * on failure it is left untouched (callers keep the address they had).
  */
 inline bool validManualServerUrl(const std::string& url,
                                  std::string& normalizedOut) {
@@ -158,15 +286,11 @@ inline bool validManualServerUrl(const std::string& url,
     if (url.compare(0, https.size(), https) == 0) {
         return false;
     }
-    const EcoStationEndpoint endpoint = EcoStationEndpoint::fromBaseUrl(url);
-    if (!endpoint.valid) {
+    EcoStationEndpoint endpoint = EcoStationEndpoint::fromBaseUrl(url);
+    if (!endpoint.valid || !validManualHost(endpoint.host)) {
         return false;
     }
-    if (endpoint.host == "localhost" ||
-        endpoint.host.compare(0, 4, "127.") == 0 ||
-        endpoint.host == "0.0.0.0") {
-        return false;
-    }
+    endpoint.host = lowerAscii(endpoint.host);
     normalizedOut = endpoint.baseUrl();
     return true;
 }

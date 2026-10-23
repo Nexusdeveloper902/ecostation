@@ -301,6 +301,18 @@ static void server_line_parses() {
     TEST_ASSERT_EQUAL(CaptureCommand::None, t.feedLine("s a b").kind);
 }
 
+// "s" followed only by spaces/tabs still means "show the address" — it
+// must never fall through to the password console.
+static void bare_s_with_padding_shows_server_url() {
+    TerminalCaptureTrigger t([]() { return 0UL; });
+    CaptureCommand c = t.feedLine("s   ");
+    TEST_ASSERT_EQUAL(CaptureCommand::ServerUrl, c.kind);
+    TEST_ASSERT_EQUAL_STRING("", c.arg.c_str());
+    c = t.feedLine("s\t\t");
+    TEST_ASSERT_EQUAL(CaptureCommand::ServerUrl, c.kind);
+    TEST_ASSERT_EQUAL_STRING("", c.arg.c_str());
+}
+
 void runCaptureTriggerTests() {
     RUN_TEST(enter_line_triggers_capture);
     RUN_TEST(associate_line_parses_the_uid);
@@ -322,4 +334,5 @@ void runCaptureTriggerTests() {
     RUN_TEST(feedLine_hands_non_command_lines_to_the_console);
     RUN_TEST(feedLine_leaves_no_residue_after_an_unknown_line);
     RUN_TEST(server_line_parses);
+    RUN_TEST(bare_s_with_padding_shows_server_url);
 }

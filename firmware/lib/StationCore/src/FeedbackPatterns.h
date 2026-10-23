@@ -9,7 +9,7 @@
  *   - MODE LED: continuous, loops forever, indicates the current mode.
  *   - EVENT LED: one-shot patterns for tap/pair results, then goes quiet.
  *
- * Pattern table (documented identically in docs/HARDWARE_SETUP.md):
+ * Pattern table (documented identically in docs/ESTACION.md, §8):
  *   MODE LED  operation : 100 ms ON every 2000 ms (slow heartbeat blip)
  *   MODE LED  pairing   : 100 ms ON, 100 OFF, 100 ON, then 1700 OFF (double blip / 2 s)
  *   MODE LED  connecting: 100 ON / 100 OFF forever (rapid blink)

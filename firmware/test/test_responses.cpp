@@ -215,6 +215,20 @@ void test_capture_id_is_parsed(void) {
     TEST_ASSERT_EQUAL(-1, EcoStation::parseCaptureId(""));
 }
 
+// A PHP notice/warning leaking before the JSON must not lose the capture id.
+void test_capture_id_survives_php_notice_prefix(void) {
+    const std::string body =
+        "PHP Notice: Undefined index: capture_id in /var/www/app/x.php on line 3\n"
+        "{\"status\":\"ok\",\"capture_id\":42,\"next_step\":\"present_card\"}";
+    TEST_ASSERT_EQUAL(42, EcoStation::parseCaptureId(body));
+}
+
+// A UTF-8 BOM (or any proxy banner) before the JSON is equally tolerable.
+void test_capture_id_survives_bom_prefix(void) {
+    const std::string body = "\xEF\xBB\xBF{\"status\":\"ok\",\"capture_id\":9}";
+    TEST_ASSERT_EQUAL(9, EcoStation::parseCaptureId(body));
+}
+
 void runResponseTests() {
     RUN_TEST(test_tap_success);
     RUN_TEST(test_tap_success_recycling_next_step);
@@ -238,4 +252,6 @@ void runResponseTests() {
     RUN_TEST(test_pair_server_error);
     RUN_TEST(test_pair_garbage_body_is_unknown_not_crash);
     RUN_TEST(test_capture_id_is_parsed);
+    RUN_TEST(test_capture_id_survives_php_notice_prefix);
+    RUN_TEST(test_capture_id_survives_bom_prefix);
 }

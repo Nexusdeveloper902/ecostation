@@ -69,7 +69,10 @@ public:
     /** Arm only on Success && awaitingClassification && eventId > 0. */
     ArmResult onTapResult(const TapResult& r, uint32_t now);
 
-    /** 'e <id>': rejects size() > 9 or value <= 0. */
+    /**
+     * 'e <id>': rejects size() > 9, value <= 0, or a pending bottle-first
+     * capture (never two transactions in flight — state left unchanged).
+     */
     bool armFromConsole(const std::string& digits, uint32_t now);
 
     /** True exactly once per arm, at elapsed >= autoCaptureDelayMs. */
@@ -78,7 +81,11 @@ public:
     /** Armed → Classify, else Capture. */
     CaptureRoute routeCapture() const;
 
-    /** Clears the arm ONLY on transportOk && 200 (retries keep it). */
+    /**
+     * Clears the arm ONLY on transportOk && 200 (retries keep it). Any
+     * attempt for the current arm also consumes its automatic attempt,
+     * so a failed manual capture never refires the auto photo.
+     */
     void onClassifyResult(bool transportOk, int status);
 
     /**

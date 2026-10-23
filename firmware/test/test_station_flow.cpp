@@ -139,6 +139,32 @@ static void console_arm_rejects_bad_ids() {
     TEST_ASSERT_EQUAL(42, f.armedEventId());
 }
 
+// BOTÓN/ENTER antes de los 5 s: un intento manual de clasificación cuenta
+// como el intento de este brazo — la auto-captura NO debe disparar otra foto.
+static void manual_classify_attempt_disables_auto_capture() {
+    StationFlow f(kT);
+    f.onTapResult(ok(11), 0);
+    f.onClassifyResult(false, -1);  // intento manual a los ~2 s, falla
+    TEST_ASSERT_EQUAL(11, f.armedEventId());  // el brazo se conserva
+    TEST_ASSERT_FALSE(f.autoCaptureDue(5000));  // sin segunda foto automática
+    TEST_ASSERT_FALSE(f.autoCaptureDue(9000));
+    f.onClassifyResult(true, 200);
+    TEST_ASSERT_EQUAL(-1, f.armedEventId());
+}
+
+// 'e <id>' se rechaza mientras hay una captura pendiente: nunca dos
+// transacciones en vuelo. Estado intacto; tras resolver, armar sí funciona.
+static void console_arm_refused_while_capture_pending() {
+    StationFlow f(kT);
+    f.onCaptureResult(true, 200, 77, 0);
+    TEST_ASSERT_FALSE(f.armFromConsole("5", 100));
+    TEST_ASSERT_EQUAL(-1, f.armedEventId());
+    TEST_ASSERT_EQUAL(77, f.pendingCaptureId());
+    TEST_ASSERT_TRUE(f.onAssociateResult(true, 200, "{}"));
+    TEST_ASSERT_TRUE(f.armFromConsole("5", 200));
+    TEST_ASSERT_EQUAL(5, f.armedEventId());
+}
+
 // Solo un toque exitoso y en espera de clasificación arma un evento.
 static void non_awaiting_or_failed_taps_never_arm() {
     StationFlow f(kT);
@@ -170,6 +196,8 @@ void runStationFlowTests() {
     RUN_TEST(pairing_mode_never_associates);
     RUN_TEST(reset_clears_everything);
     RUN_TEST(console_arm_rejects_bad_ids);
+    RUN_TEST(manual_classify_attempt_disables_auto_capture);
+    RUN_TEST(console_arm_refused_while_capture_pending);
     RUN_TEST(non_awaiting_or_failed_taps_never_arm);
     RUN_TEST(timers_survive_millis_wrap);
 }

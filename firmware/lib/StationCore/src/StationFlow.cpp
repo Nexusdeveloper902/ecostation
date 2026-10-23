@@ -52,6 +52,11 @@ ArmResult StationFlow::onTapResult(const TapResult& r, uint32_t now) {
 }
 
 bool StationFlow::armFromConsole(const std::string& digits, uint32_t now) {
+    // Never two transactions in flight: while a bottle-first capture is
+    // pending, the operator must resolve it (tap / `a <uid>`) instead.
+    if (pending_ > 0) {
+        return false;
+    }
     // The trigger accepts digits-only strings — including "0" and 60-digit
     // monsters that atol clamps. Event ids are small positive integers;
     // anything else is a typo and must be REFUSED.
@@ -84,6 +89,13 @@ CaptureRoute StationFlow::routeCapture() const {
 }
 
 void StationFlow::onClassifyResult(bool transportOk, int status) {
+    if (armed_ <= 0) {
+        return;
+    }
+    // ANY classify attempt counts as this arm's one automatic attempt:
+    // a manual BUTTON/ENTER before the 5 s delay must not be followed by
+    // a second auto photo when the manual upload fails.
+    autoDone_ = true;
     if (transportOk && status == 200) {
         armed_ = -1;  // one-shot on SUCCESS only
         autoDone_ = false;

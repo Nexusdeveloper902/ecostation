@@ -118,8 +118,14 @@ PairResult parsePairResponse(int httpStatus, const std::string& body) {
 }
 
 long parseCaptureId(const std::string& body) {
+    // PHP notices/warnings, a UTF-8 BOM or a proxy banner can precede the
+    // JSON: deserialize from the first '{' instead of losing the capture id.
+    const size_t brace = body.find('{');
+    if (brace == std::string::npos) {
+        return -1;
+    }
     JsonDocument doc;
-    if (deserializeJson(doc, body) != DeserializationError::Ok) {
+    if (deserializeJson(doc, body.c_str() + brace) != DeserializationError::Ok) {
         return -1;
     }
     const long id = doc["capture_id"] | -1L;
