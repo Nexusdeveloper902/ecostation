@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Paleta semántica de DESIGN-SPEC.md §1. -->
+    <color name="eco_primary">#18B26B</color>
+    <color name="eco_primary_strong">#0B7A47</color>
+    <color name="eco_primary_deep">#087F47</color>
+    <color name="eco_secondary">#14B8B0</color>
+    <color name="eco_secondary_deep">#0D7F7A</color>
+    <color name="eco_sun">#FFC93C</color>
+    <color name="eco_coral">#FF7A59</color>
+    <color name="eco_ink">#0F2A2E</color>
+    <color name="eco_slate">#4A6468</color>
+    <color name="eco_mist">#DCEBE6</color>
+    <color name="eco_mint">#F2FAF6</color>
+    <color name="eco_white">#FFFFFF</color>
+
+    <!-- Apoyo -->
+    <color name="eco_success_bg">#E6F8EE</color>
+    <color name="eco_success_text">#0B7A47</color>
+    <color name="eco_warning_bg">#FDF2D6</color>
+    <color name="eco_warning_text">#7A4A00</color>
+    <color name="eco_warning_icon">#F59E0B</color>
+    <color name="eco_danger_bg">#FDECEC</color>
+    <color name="eco_danger_text">#C2262C</color>
+
+    <!-- Materiales (chips e historial) -->
+    <color name="material_plastic">#2A78D6</color>
+    <color name="material_plastic_bg">#E3EEFB</color>
+    <color name="material_metal">#EB6834</color>
+    <color name="material_metal_bg">#FDEAE1</color>
+    <color name="material_glass">#14B8B0</color>
+    <color name="material_glass_bg">#E2F5EE</color>
+    <color name="material_paper">#EDA100</color>
+    <color name="material_paper_bg">#FFF4D6</color>
+    <color name="material_other">#E87BA4</color>
+    <color name="material_other_bg">#FCEAF1</color>
+
+    <!-- Tarjeta -->
+    <color name="card_green_start">#18B26B</color>
+    <color name="card_green_end">#0B7A47</color>
+    <color name="card_danger_start">#FDECEC</color>
+    <color name="card_danger_end">#FBDCDC</color>
+    <color name="card_danger_border">#C2262C</color>
+    <color name="card_text_soft">#D8F5E6</color>
+    <color name="card_id_soft">#E4F8EE</color>
+
+    <!-- Superficies y navegación -->
+    <color name="eco_nav_active">#E6F8EE</color>
+    <color name="eco_shadow">#0F2A2E</color>
+    <color name="ic_launcher_background">#F2FAF6</color>
+</resources>

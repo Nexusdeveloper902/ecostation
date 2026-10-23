@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Barra superior común: Boti 28 dp + título Fredoka 500 22. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="@dimen/top_bar_height"
+    android:background="@color/eco_mint"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="@dimen/screen_padding"
+    android:paddingEnd="@dimen/screen_padding">
+
+    <ImageView
+        android:id="@+id/topBarBoti"
+        android:layout_width="@dimen/boti_header"
+        android:layout_height="@dimen/boti_header"
+        android:adjustViewBounds="true"
+        android:contentDescription="@null"
+        android:src="@drawable/boti" />
+
+    <co.ecostation.app.ui.EcoTextView
+        android:id="@+id/topBarTitle"
+        style="@style/Eco.Text.H3"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/space_3"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:text="@string/app_name"
+        android:textColor="@color/eco_ink"
+        android:textSize="22sp" />
+</LinearLayout>

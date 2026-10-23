@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Fuente semántica para las vistas de texto propias. Se aplica en
+      EcoTextView/EcoButton/EcoEditText; en API < 26 se lee desde assets,
+      porque las fuentes en res/font solo las entiende el framework desde 26.
+    -->
+    <declare-styleable name="EcoFont">
+        <attr name="ecoFont">
+            <enum name="display" value="0" />
+            <enum name="heading" value="1" />
+            <enum name="body" value="2" />
+            <enum name="bold" value="3" />
+            <enum name="black" value="4" />
+            <enum name="mono" value="5" />
+        </attr>
+    </declare-styleable>
+</resources>

@@ -1,0 +1,706 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/eco_mint"
+    android:orientation="vertical">
+
+    <include layout="@layout/view_top_bar" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <!-- ============================ TARJETA ============================ -->
+        <ScrollView
+            android:id="@+id/cardSection"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:fillViewport="true"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="@dimen/screen_padding"
+                android:paddingTop="@dimen/space_3"
+                android:paddingEnd="@dimen/screen_padding"
+                android:paddingBottom="@dimen/space_5">
+
+                <co.ecostation.app.ui.CredentialCardView
+                    android:id="@+id/credentialCard"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_card_green"
+                    android:elevation="4dp"
+                    android:padding="@dimen/card_padding">
+
+                    <ImageView
+                        android:id="@+id/cardLogo"
+                        android:layout_width="wrap_content"
+                        android:layout_height="30dp"
+                        android:layout_gravity="top|start"
+                        android:adjustViewBounds="true"
+                        android:contentDescription="@null"
+                        android:src="@drawable/logo_horizontal_light" />
+
+                    <ImageView
+                        android:id="@+id/cardContactless"
+                        android:layout_width="26dp"
+                        android:layout_height="26dp"
+                        android:layout_gravity="top|end"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_contactless" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="bottom"
+                        android:orientation="vertical">
+
+                        <co.ecostation.app.ui.EcoTextView
+                            android:id="@+id/cardHolderName"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            app:ecoFont="display"
+                            android:maxLines="1"
+                            android:text="@string/card_holder_default"
+                            android:textColor="@color/eco_white"
+                            android:textSize="24sp" />
+
+                        <co.ecostation.app.ui.EcoTextView
+                            android:id="@+id/cardHolderClass"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:ellipsize="end"
+                            app:ecoFont="body"
+                            android:maxLines="1"
+                            android:textColor="@color/card_text_soft"
+                            android:textSize="14sp"
+                            android:visibility="gone" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="@dimen/space_3"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <co.ecostation.app.ui.EcoTextView
+                                android:id="@+id/cardCredentialId"
+                                style="@style/Eco.Text.Mono"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginEnd="@dimen/space_2"
+                                android:layout_weight="1"
+                                android:ellipsize="end"
+                                android:maxLines="1"
+                                android:textColor="@color/card_id_soft" />
+
+                            <co.ecostation.app.ui.EcoTextView
+                                android:id="@+id/stateChip"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:background="@drawable/bg_pill_white"
+                                android:drawableStart="@drawable/ic_dot_green"
+                                android:drawablePadding="6dp"
+                                app:ecoFont="bold"
+                                android:maxLines="1"
+                                android:paddingStart="10dp"
+                                android:paddingTop="5dp"
+                                android:paddingEnd="10dp"
+                                android:paddingBottom="5dp"
+                                android:text="@string/chip_ready"
+                                android:textColor="@color/eco_ink"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </co.ecostation.app.ui.CredentialCardView>
+
+                <!-- Blanco de toque: anillos + teléfono o cuenta atrás. -->
+                <co.ecostation.app.ui.TapTargetView
+                    android:id="@+id/tapTarget"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/tap_target"
+                    android:layout_marginTop="@dimen/space_2"
+                    android:contentDescription="@string/state_ready_title" />
+
+                <co.ecostation.app.ui.EcoTextView
+                    android:id="@+id/stateView"
+                    style="@style/Eco.Text.H3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="@string/state_ready_title" />
+
+                <co.ecostation.app.ui.EcoTextView
+                    android:id="@+id/hintView"
+                    style="@style/Eco.Text.BodySmall"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_2"
+                    android:gravity="center"
+                    android:lineSpacingMultiplier="1.25"
+                    android:text="@string/hint_ready"
+                    android:textColor="@color/eco_slate"
+                    android:textSize="16sp" />
+
+                <!-- Guía de vinculación: solo con el teléfono sin llave. -->
+                <LinearLayout
+                    android:id="@+id/unlinkedGroup"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_2"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <co.ecostation.app.ui.EcoTextView
+                        style="@style/Eco.Text.BodySmall"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/unlinked_body"
+                        android:textColor="@color/eco_slate" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_4"
+                        android:gravity="top"
+                        android:orientation="horizontal">
+
+                        <co.ecostation.app.ui.EcoTextView
+                            style="@style/Eco.Text.Label"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:background="@drawable/bg_pill_mint"
+                            android:gravity="center"
+                            android:text="1"
+                            android:textColor="@color/eco_primary_strong" />
+
+                        <co.ecostation.app.ui.EcoTextView
+                            style="@style/Eco.Text.BodySmall"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/space_3"
+                            android:layout_weight="1"
+                            android:text="@string/unlinked_step_1" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_3"
+                        android:gravity="top"
+                        android:orientation="horizontal">
+
+                        <co.ecostation.app.ui.EcoTextView
+                            style="@style/Eco.Text.Label"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:background="@drawable/bg_pill_mint"
+                            android:gravity="center"
+                            android:text="2"
+                            android:textColor="@color/eco_primary_strong" />
+
+                        <co.ecostation.app.ui.EcoTextView
+                            style="@style/Eco.Text.BodySmall"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/space_3"
+                            android:layout_weight="1"
+                            android:text="@string/unlinked_step_2" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_3"
+                        android:gravity="top"
+                        android:orientation="horizontal">
+
+                        <co.ecostation.app.ui.EcoTextView
+                            style="@style/Eco.Text.Label"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:background="@drawable/bg_pill_mint"
+                            android:gravity="center"
+                            android:text="3"
+                            android:textColor="@color/eco_primary_strong" />
+
+                        <co.ecostation.app.ui.EcoTextView
+                            style="@style/Eco.Text.BodySmall"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/space_3"
+                            android:layout_weight="1"
+                            android:text="@string/unlinked_step_3" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <co.ecostation.app.ui.EcoButton
+                    android:id="@+id/linkPhone"
+                    style="@style/Eco.Button.Primary"
+                    android:layout_width="match_parent"
+                    android:layout_marginTop="@dimen/space_5"
+                    android:text="@string/link_phone"
+                    android:visibility="gone" />
+
+                <co.ecostation.app.ui.EcoButton
+                    android:id="@+id/linkCancel"
+                    style="@style/Eco.Button.Outline"
+                    android:layout_width="match_parent"
+                    android:layout_marginTop="@dimen/space_4"
+                    android:text="@string/name_cancel"
+                    android:visibility="gone" />
+
+                <co.ecostation.app.ui.EcoButton
+                    android:id="@+id/nfcSettingsButton"
+                    style="@style/Eco.Button.Outline"
+                    android:layout_width="match_parent"
+                    android:layout_marginTop="@dimen/space_4"
+                    android:text="@string/nfc_open_settings"
+                    android:visibility="gone" />
+
+                <co.ecostation.app.ui.EcoTextView
+                    android:id="@+id/lastTapPill"
+                    style="@style/Eco.Text.Label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_4"
+                    android:background="@drawable/bg_pill_white"
+                    android:drawableStart="@drawable/ic_check_16"
+                    android:drawablePadding="@dimen/space_2"
+                    android:drawableTint="@color/eco_primary_strong"
+                    android:elevation="1dp"
+                    android:paddingStart="@dimen/space_4"
+                    android:paddingTop="@dimen/space_3"
+                    android:paddingEnd="@dimen/space_4"
+                    android:paddingBottom="@dimen/space_3"
+                    android:textColor="@color/eco_ink"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- ============================ PARLANTE =========================== -->
+        <ScrollView
+            android:id="@+id/speakerSection"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:fillViewport="true"
+            android:scrollbars="none"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="@dimen/screen_padding"
+                android:paddingTop="@dimen/space_2"
+                android:paddingEnd="@dimen/screen_padding"
+                android:paddingBottom="@dimen/space_5">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <co.ecostation.app.ui.EcoTextView
+                        style="@style/Eco.Text.H2"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/speaker_title" />
+
+                    <Switch
+                        android:id="@+id/speakerSwitch"
+                        style="@style/Eco.Switch"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
+
+                <!-- Tres filas de estado -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_4"
+                    android:background="@drawable/bg_card_white"
+                    android:elevation="2dp"
+                    android:orientation="vertical"
+                    android:paddingStart="@dimen/space_4"
+                    android:paddingTop="@dimen/space_2"
+                    android:paddingEnd="@dimen/space_4"
+                    android:paddingBottom="@dimen/space_2">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingTop="@dimen/space_3"
+                        android:paddingBottom="@dimen/space_3">
+
+                        <FrameLayout
+                            android:layout_width="@dimen/icon_tile"
+                            android:layout_height="@dimen/icon_tile"
+                            android:background="@drawable/bg_icon_tile_success">
+
+                            <ImageView
+                                android:layout_width="18dp"
+                                android:layout_height="18dp"
+                                android:layout_gravity="center"
+                                android:contentDescription="@null"
+                                android:src="@drawable/ic_server"
+                                android:tint="@color/eco_primary_deep" />
+                        </FrameLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/space_3"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <co.ecostation.app.ui.EcoTextView
+                                style="@style/Eco.Text.Label"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/speaker_server"
+                                android:textSize="15sp" />
+
+                            <co.ecostation.app.ui.EcoTextView
+                                android:id="@+id/speakerServerValue"
+                                style="@style/Eco.Text.Caption"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:ellipsize="end"
+                                android:maxLines="2"
+                                android:text="—" />
+                        </LinearLayout>
+
+                        <co.ecostation.app.ui.EcoTextView
+                            android:id="@+id/speakerServerChip"
+                            style="@style/Eco.Text.Micro"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/bg_pill_mist"
+                            android:drawableStart="@drawable/ic_dot_slate"
+                            android:drawablePadding="6dp"
+                            android:paddingStart="10dp"
+                            android:paddingTop="5dp"
+                            android:paddingEnd="10dp"
+                            android:paddingBottom="5dp"
+                            android:text="@string/speaker_off" />
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="@color/eco_mist" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingTop="@dimen/space_3"
+                        android:paddingBottom="@dimen/space_3">
+
+                        <FrameLayout
+                            android:layout_width="@dimen/icon_tile"
+                            android:layout_height="@dimen/icon_tile"
+                            android:background="@drawable/bg_icon_tile_success">
+
+                            <ImageView
+                                android:layout_width="18dp"
+                                android:layout_height="18dp"
+                                android:layout_gravity="center"
+                                android:contentDescription="@null"
+                                android:src="@drawable/ic_bluetooth"
+                                android:tint="@color/eco_primary_deep" />
+                        </FrameLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/space_3"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <co.ecostation.app.ui.EcoTextView
+                                style="@style/Eco.Text.Label"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/speaker_bluetooth"
+                                android:textSize="15sp" />
+
+                            <co.ecostation.app.ui.EcoTextView
+                                android:id="@+id/speakerBluetoothValue"
+                                style="@style/Eco.Text.Caption"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:ellipsize="end"
+                                android:maxLines="2"
+                                android:text="—" />
+                        </LinearLayout>
+
+                        <co.ecostation.app.ui.EcoTextView
+                            android:id="@+id/speakerBluetoothChip"
+                            style="@style/Eco.Text.Micro"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/bg_pill_mist"
+                            android:drawableStart="@drawable/ic_dot_slate"
+                            android:drawablePadding="6dp"
+                            android:paddingStart="10dp"
+                            android:paddingTop="5dp"
+                            android:paddingEnd="10dp"
+                            android:paddingBottom="5dp"
+                            android:text="@string/speaker_phone_output" />
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="@color/eco_mist" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingTop="@dimen/space_3"
+                        android:paddingBottom="@dimen/space_3">
+
+                        <FrameLayout
+                            android:layout_width="@dimen/icon_tile"
+                            android:layout_height="@dimen/icon_tile"
+                            android:background="@drawable/bg_icon_tile_success">
+
+                            <ImageView
+                                android:layout_width="18dp"
+                                android:layout_height="18dp"
+                                android:layout_gravity="center"
+                                android:contentDescription="@null"
+                                android:src="@drawable/ic_user"
+                                android:tint="@color/eco_primary_deep" />
+                        </FrameLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/space_3"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <co.ecostation.app.ui.EcoTextView
+                                style="@style/Eco.Text.Label"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/speaker_account"
+                                android:textSize="15sp" />
+
+                            <co.ecostation.app.ui.EcoTextView
+                                android:id="@+id/speakerAccountValue"
+                                style="@style/Eco.Text.Caption"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:ellipsize="end"
+                                android:maxLines="1"
+                                android:text="@string/speaker_account_missing" />
+                        </LinearLayout>
+
+                        <co.ecostation.app.ui.EcoTextView
+                            android:id="@+id/speakerAccountChip"
+                            style="@style/Eco.Text.Micro"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/bg_pill_mist"
+                            android:drawableStart="@drawable/ic_dot_slate"
+                            android:drawablePadding="6dp"
+                            android:paddingStart="10dp"
+                            android:paddingTop="5dp"
+                            android:paddingEnd="10dp"
+                            android:paddingBottom="5dp"
+                            android:text="@string/speaker_account_missing" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <co.ecostation.app.ui.EcoTextView
+                    style="@style/Eco.Text.H2"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_5"
+                    android:text="@string/speaker_signals" />
+
+                <co.ecostation.app.ui.EcoTextView
+                    android:id="@+id/signalEmpty"
+                    style="@style/Eco.Text.BodySmall"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_3"
+                    android:background="@drawable/bg_surface"
+                    android:padding="@dimen/space_4"
+                    android:text="@string/speaker_signals_empty"
+                    android:textColor="@color/eco_slate" />
+
+                <LinearLayout
+                    android:id="@+id/signalList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_2"
+                    android:background="@drawable/bg_surface"
+                    android:orientation="vertical"
+                    android:paddingStart="@dimen/space_4"
+                    android:paddingEnd="@dimen/space_4"
+                    android:visibility="gone" />
+
+                <co.ecostation.app.ui.EcoTextView
+                    style="@style/Eco.FieldLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_5"
+                    android:text="@string/speaker_server_address" />
+
+                <LinearLayout
+                    android:id="@+id/speakerAddressRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_field_row"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="@dimen/space_4"
+                    android:paddingTop="@dimen/space_3"
+                    android:paddingEnd="@dimen/space_4"
+                    android:paddingBottom="@dimen/space_3">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_globe"
+                        android:tint="@color/eco_slate" />
+
+                    <co.ecostation.app.ui.EcoTextView
+                        android:id="@+id/speakerAddressValue"
+                        style="@style/Eco.Text.BodySmall"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/space_2"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:text="@string/speaker_server_auto"
+                        android:textColor="@color/eco_ink" />
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_chevron_right"
+                        android:tint="@color/eco_slate" />
+                </LinearLayout>
+
+                <co.ecostation.app.ui.EcoTextView
+                    style="@style/Eco.Text.Caption"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_2"
+                    android:text="@string/speaker_server_caption" />
+
+                <!-- Diagnóstico técnico, deliberadamente secundario. -->
+                <LinearLayout
+                    android:id="@+id/diagToggle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_5"
+                    android:background="?android:attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingTop="@dimen/space_3"
+                    android:paddingBottom="@dimen/space_3">
+
+                    <co.ecostation.app.ui.EcoTextView
+                        style="@style/Eco.Text.Micro"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/diag_title" />
+
+                    <ImageView
+                        android:id="@+id/diagChevron"
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_chevron_right"
+                        android:tint="@color/eco_slate" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/diagBody"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <co.ecostation.app.ui.EcoTextView
+                        android:id="@+id/diagView"
+                        style="@style/Eco.Text.Micro"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        app:ecoFont="mono"
+                        android:textIsSelectable="true"
+                        android:textSize="11sp" />
+
+                    <co.ecostation.app.ui.EcoTextView
+                        android:id="@+id/feedView"
+                        style="@style/Eco.Text.Micro"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_3"
+                        app:ecoFont="mono"
+                        android:textIsSelectable="true"
+                        android:textSize="11sp" />
+
+                    <co.ecostation.app.ui.EcoTextView
+                        android:id="@+id/audioView"
+                        style="@style/Eco.Text.Micro"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_3"
+                        android:background="?android:attr/selectableItemBackground"
+                        app:ecoFont="mono"
+                        android:padding="@dimen/space_2"
+                        android:textIsSelectable="true"
+                        android:textSize="11sp" />
+
+                    <co.ecostation.app.ui.EcoButton
+                        android:id="@+id/studentButton"
+                        style="@style/Eco.Button.Ghost"
+                        android:layout_width="wrap_content"
+                        android:layout_marginTop="@dimen/space_2"
+                        android:text="@string/student_open" />
+
+                    <co.ecostation.app.ui.EcoButton
+                        android:id="@+id/settingsButton"
+                        style="@style/Eco.Button.Ghost"
+                        android:layout_width="wrap_content"
+                        android:text="@string/settings_open" />
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+    </FrameLayout>
+
+    <include layout="@layout/view_bottom_nav" />
+</LinearLayout>

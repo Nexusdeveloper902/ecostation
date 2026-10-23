@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Barra de navegación blanca con iconos oscuros desde API 27. -->
+    <style name="Theme.EcoStation" parent="Theme.EcoStation.Base">
+        <item name="android:navigationBarColor">@color/eco_white</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

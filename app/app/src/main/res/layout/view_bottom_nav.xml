@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Barra de navegación inferior compartida por las tres actividades.
+  La pinta y la conecta `co.ecostation.app.ui.BottomNav`; las cuatro
+  pestañas son destinos reales, con la activa en pastilla menta.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/eco_white"
+    android:orientation="vertical">
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/eco_mist" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/bottom_nav_height"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/space_2"
+        android:paddingTop="@dimen/space_2"
+        android:paddingEnd="@dimen/space_2"
+        android:paddingBottom="@dimen/space_2">
+
+        <LinearLayout
+            android:id="@+id/navCard"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_nav_item"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/navCardIcon"
+                android:layout_width="@dimen/icon_tab"
+                android:layout_height="@dimen/icon_tab"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_tab_card" />
+
+            <co.ecostation.app.ui.EcoTextView
+                android:id="@+id/navCardLabel"
+                style="@style/Eco.Text.Micro"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:maxLines="1"
+                android:text="@string/nav_card"
+                android:textColor="@color/eco_slate"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/navSpeaker"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_nav_item"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/navSpeakerIcon"
+                android:layout_width="@dimen/icon_tab"
+                android:layout_height="@dimen/icon_tab"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_tab_speaker" />
+
+            <co.ecostation.app.ui.EcoTextView
+                android:id="@+id/navSpeakerLabel"
+                style="@style/Eco.Text.Micro"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:maxLines="1"
+                android:text="@string/nav_speaker"
+                android:textColor="@color/eco_slate"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/navPoints"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_nav_item"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/navPointsIcon"
+                android:layout_width="@dimen/icon_tab"
+                android:layout_height="@dimen/icon_tab"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_tab_points" />
+
+            <co.ecostation.app.ui.EcoTextView
+                android:id="@+id/navPointsLabel"
+                style="@style/Eco.Text.Micro"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:maxLines="1"
+                android:text="@string/nav_points"
+                android:textColor="@color/eco_slate"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/navSettings"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_nav_item"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/navSettingsIcon"
+                android:layout_width="@dimen/icon_tab"
+                android:layout_height="@dimen/icon_tab"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_tab_settings" />
+
+            <co.ecostation.app.ui.EcoTextView
+                android:id="@+id/navSettingsLabel"
+                style="@style/Eco.Text.Micro"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:maxLines="1"
+                android:text="@string/nav_settings"
+                android:textColor="@color/eco_slate"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

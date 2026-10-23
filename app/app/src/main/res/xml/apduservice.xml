@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<host-apdu-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/hce_description"
+    android:requireDeviceUnlock="false">
+    <!-- Category "other" (not payment): no default-app conflicts, no tap-and-pay UX. -->
+    <aid-group
+        android:description="@string/aid_group_description"
+        android:category="other">
+        <aid-filter android:name="F0010203040506" />
+    </aid-group>
+</host-apdu-service>
