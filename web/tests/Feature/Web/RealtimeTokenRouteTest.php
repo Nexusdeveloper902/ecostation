@@ -92,7 +92,7 @@ class RealtimeTokenRouteTest extends TestCase
     public function a_flagged_speaker_is_redirected_instead_of_getting_json(): void
     {
         $station = User::where('email', 'estacion@ecostation.test')->firstOrFail();
-        $station->update(['must_change_password' => true]);
+        $station->forceFill(['must_change_password' => true])->save();
 
         $this->post('/login', [
             'email' => 'estacion@ecostation.test',

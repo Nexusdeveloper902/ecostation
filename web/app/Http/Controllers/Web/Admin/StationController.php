@@ -42,7 +42,7 @@ class StationController extends Controller
 
         $key = Str::random(32);
 
-        $reader = Reader::create([
+        $reader = Reader::forceCreate([
             'label' => trim((string) $data['label']),
             'api_key' => $key,
         ]);
@@ -57,7 +57,7 @@ class StationController extends Controller
     {
         $key = Str::random(32);
 
-        $reader->update(['api_key' => $key]);
+        $reader->forceFill(['api_key' => $key])->save();
 
         return redirect()->route('admin.stations')->with([
             'status' => 'Clave rotada para '.$reader->label.'. La anterior ya no sirve.',

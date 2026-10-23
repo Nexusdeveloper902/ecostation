@@ -5,6 +5,7 @@ namespace App\Services\Hce;
 use App\Models\Card;
 use App\Models\HceCredentialKey;
 use App\Models\Reader;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -80,7 +81,17 @@ class HceCredentialAuth
 
         /** @var HceCredentialKey|null $row */
         $row = $card->hceKey()->first();
-        $key = is_string($row?->secret) && ctype_xdigit($row->secret) ? hex2bin($row->secret) : false;
+
+        // El secreto está cifrado con APP_KEY. Un ciphertext de otra
+        // clave (clave rotada/restaurada) no puede tumbar el endpoint:
+        // se trata como credencial sin clave útil.
+        try {
+            $secret = $row?->secret;
+        } catch (DecryptException) {
+            return 'no_key';
+        }
+
+        $key = is_string($secret) && ctype_xdigit($secret) ? hex2bin($secret) : false;
 
         if (! is_string($key) || strlen($key) !== self::KEY_BYTES) {
             return 'no_key';

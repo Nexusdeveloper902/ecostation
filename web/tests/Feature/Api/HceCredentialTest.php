@@ -10,6 +10,7 @@ use App\Models\Reader;
 use App\Models\Student;
 use App\Services\Hce\HceCredentialAuth;
 use App\Services\PairingService;
+use Illuminate\Encryption\Encrypter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -108,6 +109,29 @@ class HceCredentialTest extends TestCase
         $this->tap($phone->tap())
             ->assertOk()
             ->assertJson(['status' => 'ok', 'student_first_name' => $student->firstName()]);
+    }
+
+    #[Test]
+    public function a_key_encrypted_with_another_app_key_answers_no_key_instead_of_500(): void
+    {
+        [$phone] = $this->enrolledPhone('PLS-FOREIGNKEY01');
+        $card = Card::where('credential_uid', 'PLS-FOREIGNKEY01')->firstOrFail();
+
+        // Restored database under a different APP_KEY: re-encrypt the
+        // stored secret with a foreign key. Reading it must fail closed.
+        $foreign = new Encrypter(random_bytes(32), 'AES-256-CBC');
+        DB::table('hce_credential_keys')
+            ->where('card_id', $card->id)
+            ->update(['secret' => $foreign->encrypt(bin2hex($phone->key), false)]);
+
+        $result = app(HceCredentialAuth::class)->verifyTap(
+            $card,
+            '0123456789abcdef',
+            str_repeat('a', 64),
+        );
+
+        $this->assertSame('no_key', $result);
+        $this->assertNotEmpty($phone->key);
     }
 
     #[Test]

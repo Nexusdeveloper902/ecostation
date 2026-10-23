@@ -129,7 +129,7 @@ class RecyclingReportService
      * One student's recycling history: per-deposit rows (material, points,
      * reader, time, whether a photo survives), newest first, plus totals.
      *
-     * @return array{student: array{id: int, name: string, class_name: ?string}, deposits: array<int, array{deposit_id: int, date: string, time: string, material: string, points: int, is_recyclable: bool, has_photo: bool, reader: ?string}>, totals: array{items: int, points: int}}
+     * @return array{student: array{id: int, name: string, class_name: ?string}, deposits: array<int, array{deposit_id: int, date: string, time: string, class_name: ?string, material: string, points: int, is_recyclable: bool, has_photo: bool, reader: ?string}>, totals: array{items: int, points: int}}
      */
     public function studentHistory(Student $student, int $days = 30): array
     {
@@ -139,6 +139,7 @@ class RecyclingReportService
         $rows = DB::table('recycling_deposits as d')
             ->join('events as e', 'e.id', '=', 'd.event_id')
             ->join('cards as c', 'c.id', '=', 'e.card_id')
+            ->leftJoin('classes as cl', 'cl.id', '=', 'e.class_id')
             ->leftJoin('readers as r', 'r.id', '=', 'e.reader_id')
             ->where('c.student_id', $student->id)
             ->where('e.occurred_at', '>=', $from)
@@ -151,6 +152,7 @@ class RecyclingReportService
                 'd.is_recyclable',
                 'd.image_path',
                 'e.occurred_at',
+                'cl.name as class_name',
                 'r.label as reader_label',
             ]);
 
@@ -158,6 +160,8 @@ class RecyclingReportService
             'deposit_id' => (int) $row->deposit_id,
             'date' => Carbon::parse($row->occurred_at)->toDateString(),
             'time' => Carbon::parse($row->occurred_at)->format('H:i'),
+            // Class SNAPSHOT of the tap, for historical exports.
+            'class_name' => $row->class_name !== null ? (string) $row->class_name : null,
             'material' => (string) $row->material_class,
             'points' => (int) $row->points_awarded,
             'is_recyclable' => (bool) $row->is_recyclable,

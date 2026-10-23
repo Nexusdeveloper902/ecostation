@@ -86,7 +86,7 @@ class ClassificationTest extends TestCase
     {
         $event = $this->recyclingTapFor('Maria González');
 
-        $other = Reader::create(['label' => 'Otra estación', 'api_key' => Str::random(32)]);
+        $other = Reader::forceCreate(['label' => 'Otra estación', 'api_key' => Str::random(32)]);
 
         $this->post('/api/v1/recycling/classify', [
             'event_id' => $event->id,

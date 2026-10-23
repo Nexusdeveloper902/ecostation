@@ -8,8 +8,9 @@ use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Role gate for web/API users: `role:admin`, `role:station`, or
- * `role:admin,teacher` (any of). Guest requests pass through to the auth
- * middleware (which returns a JSON 401 for API clients).
+ * `role:admin,teacher` (any of). A guest fails CLOSED with 401 instead
+ * of being silently waved through when this middleware runs without an
+ * auth middleware in front.
  */
 class EnsureRole
 {
@@ -18,7 +19,7 @@ class EnsureRole
         $user = $request->user();
 
         if ($user === null) {
-            return $next($request); // let auth/auth:sanctum handle guests
+            abort(401);
         }
 
         $role = $user->role instanceof \BackedEnum ? $user->role->value : (string) $user->role;

@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Reader extends Model
 {
-    protected $fillable = ['label', 'api_key'];
+    // La clave la genera SIEMPRE el servidor (forceCreate/forceFill).
+    protected $fillable = ['label'];
 
     protected $hidden = ['api_key'];
 

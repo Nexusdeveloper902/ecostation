@@ -41,7 +41,7 @@ class StaffController extends Controller
 
         $role = (string) $data['role'];
 
-        $user = User::create([
+        $user = User::forceCreate([
             'name' => trim((string) $data['name']),
             'email' => mb_strtolower(trim((string) $data['email'])),
             'role' => $role,

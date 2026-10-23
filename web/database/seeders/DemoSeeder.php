@@ -62,8 +62,13 @@ class DemoSeeder extends Seeder
             }
         }
 
-        $reader = Reader::firstOrCreate(['label' => 'Estación Demo'], ['api_key' => Str::random(32)]);
-        if ($reader->wasRecentlyCreated) {
+        $reader = Reader::where('label', 'Estación Demo')->first();
+
+        if ($reader === null) {
+            $reader = Reader::forceCreate([
+                'label' => 'Estación Demo',
+                'api_key' => Str::random(32),
+            ]);
             $this->command?->info("Reader API key (shown once): {$reader->api_key}");
         }
     }

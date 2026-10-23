@@ -198,6 +198,13 @@ class TeacherPagesTest extends TestCase
         $other = $this->get('/teacher/export.csv');
         $other->assertOk();
         $this->assertStringNotContainsString('Maria González', $other->streamedContent());
+
+        // The new teacher can open the student card (current scope) but the
+        // historical row still names the class where the tap happened.
+        $studentCsv = $this->get('/teacher/students/'.$maria->id.'/export.csv');
+        $studentCsv->assertOk();
+        $this->assertStringContainsString('Maria González', $studentCsv->streamedContent());
+        $this->assertStringContainsString('5° A', $studentCsv->streamedContent());
     }
 
     #[Test]

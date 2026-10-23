@@ -13,7 +13,9 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'role', 'student_id', 'must_change_password'])]
+// Privileged columns (role, student_id, must_change_password) are NEVER
+// mass-assignable: trusted paths use forceFill/forceCreate.
+#[Fillable(['name', 'email', 'password'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {

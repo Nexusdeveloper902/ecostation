@@ -80,7 +80,7 @@ class StudentScopeTest extends TestCase
     public function an_orphaned_student_account_allows_no_one(): void
     {
         $user = User::where('role', 'student')->where('student_id', '!=', null)->firstOrFail();
-        $user->update(['student_id' => null]);
+        $user->forceFill(['student_id' => null])->save();
 
         $scope = StudentScope::forUser($user->fresh());
 

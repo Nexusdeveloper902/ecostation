@@ -57,7 +57,7 @@ class TeacherExportController extends Controller
                 'date' => $deposit['date'],
                 'time' => $deposit['time'],
                 'student' => $history['student']['name'],
-                'class' => $history['student']['class_name'],
+                'class' => $deposit['class_name'] ?? $history['student']['class_name'],
                 'material' => $deposit['material'],
                 'points' => $deposit['points'],
                 'is_recyclable' => $deposit['is_recyclable'],

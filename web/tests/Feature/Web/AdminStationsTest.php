@@ -70,6 +70,29 @@ class AdminStationsTest extends TestCase
     }
 
     #[Test]
+    public function the_server_always_generates_the_key_and_ignores_payload_keys(): void
+    {
+        $this->actingAs($this->admin())
+            ->post('/admin/stations', ['label' => 'Estación Forzada', 'api_key' => 'attacker-key'])
+            ->assertRedirect(route('admin.stations'));
+
+        $reader = Reader::where('label', 'Estación Forzada')->firstOrFail();
+        $createdKey = (string) $reader->makeVisible('api_key')->api_key;
+
+        $this->assertNotSame('attacker-key', $createdKey);
+        $this->assertSame(32, strlen($createdKey));
+
+        $this->actingAs($this->admin())
+            ->post("/admin/stations/{$reader->id}/rotate-key", ['api_key' => 'attacker-key-2'])
+            ->assertRedirect(route('admin.stations'));
+
+        $rotatedKey = (string) $reader->fresh()->makeVisible('api_key')->api_key;
+        $this->assertNotSame($createdKey, $rotatedKey);
+        $this->assertNotSame('attacker-key-2', $rotatedKey);
+        $this->assertSame(32, strlen($rotatedKey));
+    }
+
+    #[Test]
     public function the_index_shows_the_fingerprint_and_never_a_key(): void
     {
         $demo = $this->reader();
@@ -86,7 +109,7 @@ class AdminStationsTest extends TestCase
     #[Test]
     public function deleting_a_station_removes_it(): void
     {
-        $reader = Reader::create(['label' => 'Estación Borrable', 'api_key' => Str::random(32)]);
+        $reader = Reader::forceCreate(['label' => 'Estación Borrable', 'api_key' => Str::random(32)]);
 
         $this->actingAs($this->admin())
             ->delete("/admin/stations/{$reader->id}")

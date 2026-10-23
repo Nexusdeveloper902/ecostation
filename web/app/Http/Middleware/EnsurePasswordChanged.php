@@ -45,11 +45,18 @@ class EnsurePasswordChanged
             return $next($request);
         }
 
-        $routeName = $request->route()?->getName();
+        $route = $request->route();
 
-        // Unnamed routes (the 404 fallback) keep their verdict — the wall
-        // only guards real pages, it never invents redirects.
-        if ($routeName === null || in_array($routeName, self::EXEMPT, true)) {
+        // No matched route (framework 404) and the explicit fallback keep
+        // their own verdict. Every other route must be NAMED and exempt
+        // to bypass the wall: an unnamed real route is never a loophole.
+        if ($route === null || $route->isFallback) {
+            return $next($request);
+        }
+
+        $routeName = $route->getName();
+
+        if ($routeName !== null && in_array($routeName, self::EXEMPT, true)) {
             return $next($request);
         }
 

@@ -197,7 +197,7 @@ class CaptureFlowTest extends TestCase
         ], ['Authorization' => 'Bearer '.$this->readerToken()])
             ->json('capture_id');
 
-        $other = Reader::create(['label' => 'Otra estación', 'api_key' => Str::random(32)]);
+        $other = Reader::forceCreate(['label' => 'Otra estación', 'api_key' => Str::random(32)]);
 
         $this->postJson("/api/v1/recycling/captures/{$captureId}/associate", [
             'credential_uid' => $this->cardUidFor('Maria González'),

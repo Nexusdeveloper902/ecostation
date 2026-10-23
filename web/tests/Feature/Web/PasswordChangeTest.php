@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Route;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -33,7 +34,7 @@ class PasswordChangeTest extends TestCase
     {
         $student = Student::where('name', 'Maria González')->firstOrFail();
         $user = $student->account;
-        $user->update(['must_change_password' => true]);
+        $user->forceFill(['must_change_password' => true])->save();
 
         return $user->fresh();
     }
@@ -41,7 +42,7 @@ class PasswordChangeTest extends TestCase
     private function flaggedStation(): User
     {
         $station = User::where('email', 'estacion@ecostation.test')->firstOrFail();
-        $station->update(['must_change_password' => true]);
+        $station->forceFill(['must_change_password' => true])->save();
 
         return $station->fresh();
     }
@@ -63,7 +64,7 @@ class PasswordChangeTest extends TestCase
     public function a_flagged_admin_bounces_too(): void
     {
         $admin = $this->admin();
-        $admin->update(['must_change_password' => true]);
+        $admin->forceFill(['must_change_password' => true])->save();
 
         $this->actingAs($admin)->get('/')->assertRedirect(route('password.change'));
         $this->actingAs($admin)->get('/station')->assertRedirect(route('password.change'));
@@ -85,7 +86,7 @@ class PasswordChangeTest extends TestCase
         // flagged account is gated, not just sessions.
         $admin = $this->admin();
         $token = $admin->createToken('audit')->plainTextToken;
-        $admin->update(['must_change_password' => true]);
+        $admin->forceFill(['must_change_password' => true])->save();
 
         $this->postJson('/api/v1/events/tap', ['credential_uid' => 'X'], [
             'Authorization' => "Bearer {$token}",
@@ -110,6 +111,16 @@ class PasswordChangeTest extends TestCase
         $this->actingAs($this->flaggedStudent())
             ->get('/no-such-page-anywhere')
             ->assertNotFound();
+    }
+
+    #[Test]
+    public function an_unnamed_real_route_is_not_an_implicit_exemption(): void
+    {
+        Route::middleware(['web', 'auth'])->get('/unnamed-flagged-page', fn () => 'ok');
+
+        $this->actingAs($this->flaggedStudent())
+            ->get('/unnamed-flagged-page')
+            ->assertRedirect(route('password.change'));
     }
 
     #[Test]
@@ -177,7 +188,7 @@ class PasswordChangeTest extends TestCase
         // the replacement is the documented initial value. A direct model
         // write bypasses the rotation flow, so start a fresh session with
         // the new credential (AuthenticateSession would otherwise log out).
-        $user->update(['password' => 'a-personal-secret-1', 'must_change_password' => true]);
+        $user->forceFill(['password' => 'a-personal-secret-1', 'must_change_password' => true])->save();
         $this->post('/logout');
         $this->post('/login', ['email' => $user->email, 'password' => 'a-personal-secret-1']);
 
