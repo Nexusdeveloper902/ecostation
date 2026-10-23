@@ -1,0 +1,9 @@
+{
+  "name": "StationCore",
+  "version": "1.0.0",
+  "description": "Lógica pura de la estación (sin hardware): cargas, lectura de respuestas, modos, antirrebote, patrones de LED. C++ probable en el host.",
+  "keywords": ["ecostation", "nfc", "core"],
+  "license": "Proprietary",
+  "frameworks": "*",
+  "platforms": "*"
+}
