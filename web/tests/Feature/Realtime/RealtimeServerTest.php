@@ -426,6 +426,82 @@ class RealtimeServerTest extends TestCase
         fclose($teacher);
     }
 
+    #[Test]
+    public function a_connection_is_closed_when_its_token_expires(): void
+    {
+        config(['app.key' => self::APP_KEY]);
+
+        $db = $this->freshFileDatabase();
+        $adminId = $this->seedUser($db, 'admin');
+        $port = $this->startServer($db, [
+            'REALTIME_POLL_MS' => '50',
+            'REALTIME_SCOPE_REFRESH_SECONDS' => '1',
+        ]);
+        $this->assertNotNull($port, 'realtime:serve no arrancó');
+
+        [$sock] = $this->upgrade($port, RealtimeToken::issue($adminId, time() + 2));
+        $hello = $this->readMessage($sock);
+        $this->assertNotNull($hello);
+        $this->assertSame('hello', $hello['type']);
+
+        $this->assertTrue($this->connectionCloses($sock, 4.0), 'el socket debe cerrarse al vencer el token');
+    }
+
+    #[Test]
+    public function a_connection_is_closed_at_the_hard_lifetime_cap(): void
+    {
+        config(['app.key' => self::APP_KEY]);
+
+        $db = $this->freshFileDatabase();
+        $adminId = $this->seedUser($db, 'admin');
+        $port = $this->startServer($db, [
+            'REALTIME_POLL_MS' => '50',
+            'REALTIME_MAX_CONNECTION_SECONDS' => '1',
+        ]);
+        $this->assertNotNull($port, 'realtime:serve no arrancó');
+
+        [$sock] = $this->upgrade($port, RealtimeToken::issue($adminId, time() + 120));
+        $hello = $this->readMessage($sock);
+        $this->assertNotNull($hello);
+        $this->assertSame('hello', $hello['type']);
+
+        $this->assertTrue($this->connectionCloses($sock, 4.0), 'la vida máxima de la conexión debe imponerse');
+    }
+
+    #[Test]
+    public function a_deleted_user_is_disconnected_and_a_class_removal_rescopes_the_connection(): void
+    {
+        config(['app.key' => self::APP_KEY]);
+
+        $db = $this->freshFileDatabase();
+        $teacherId = $this->seedUser($db, 'teacher');
+        $classA = $this->seedClass($db, $teacherId, '5° A Live');
+        $port = $this->startServer($db, [
+            'REALTIME_POLL_MS' => '100',
+            'REALTIME_SCOPE_REFRESH_SECONDS' => '1',
+        ]);
+        $this->assertNotNull($port, 'realtime:serve no arrancó');
+
+        [$teacher] = $this->upgrade($port, RealtimeToken::issue($teacherId, time() + 120));
+        $this->readMessage($teacher); // hello
+
+        // The pivot disappears: the next poll rescopes to an empty list.
+        DB::connection('realtime_file')->table('teacher_class')->where('user_id', $teacherId)->delete();
+
+        usleep(1400000);
+        $this->seedTap($db, '07:50', 'AFTER REMOVAL Student', $classA);
+
+        $this->assertNull(
+            $this->readMessageIfAny($teacher, 1.0),
+            'un docente sin cursos ya no recibe taps del curso que perdió',
+        );
+
+        // Deleting the account closes the connection outright.
+        DB::connection('realtime_file')->table('users')->where('id', $teacherId)->delete();
+
+        $this->assertTrue($this->connectionCloses($teacher, 4.0), 'un usuario inexistente no conserva el socket');
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private function freshFileDatabase(): string
@@ -577,7 +653,7 @@ class RealtimeServerTest extends TestCase
         ]);
     }
 
-    private function startServer(string $db): ?int
+    private function startServer(string $db, array $overrides = []): ?int
     {
         for ($attempt = 0; $attempt < 3; $attempt++) {
             $port = random_int(21000, 39000);
@@ -589,7 +665,7 @@ class RealtimeServerTest extends TestCase
                 'DB_CONNECTION' => 'sqlite',
                 'DB_DATABASE' => $db,
                 'REALTIME_POLL_MS' => '100',
-            ]);
+            ], $overrides);
 
             $process = new Process(
                 [PHP_BINARY, 'artisan', 'realtime:serve', '--host=127.0.0.1', sprintf('--port=%d', $port)],
@@ -693,6 +769,27 @@ class RealtimeServerTest extends TestCase
         }
 
         return null;
+    }
+
+    /**
+     * True cuando el servidor cerró el socket (o envió el frame de
+     * cierre) dentro del presupuesto.
+     */
+    private function connectionCloses($sock, float $budget): bool
+    {
+        $deadline = microtime(true) + $budget;
+
+        while (microtime(true) < $deadline) {
+            $chunk = @fread($sock, 8192);
+
+            if ($chunk === false || ($chunk === '' && feof($sock))) {
+                return true;
+            }
+
+            usleep(100000);
+        }
+
+        return false;
     }
 
     /**

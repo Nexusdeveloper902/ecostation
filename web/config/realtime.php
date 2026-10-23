@@ -29,4 +29,11 @@ return [
     // Vida del token del feed (se re-emite al reconectar).
     'token_ttl_seconds' => (int) env('REALTIME_TOKEN_TTL_SECONDS', 900),
 
+    // Vida máxima de una conexión WebSocket, aunque su token viva más.
+    'max_connection_seconds' => (int) env('REALTIME_MAX_CONNECTION_SECONDS', 3600),
+
+    // Cada cuánto se recalculan rol y cursos de una conexión abierta.
+    // Un cambio de rol o de cursos se aplica sin reconectar.
+    'scope_refresh_seconds' => (int) env('REALTIME_SCOPE_REFRESH_SECONDS', 45),
+
 ];

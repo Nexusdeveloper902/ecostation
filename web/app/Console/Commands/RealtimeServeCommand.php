@@ -48,7 +48,20 @@ class RealtimeServeCommand extends Command
 
     private const MAX_HANDSHAKE_BUFFER = 32768;
 
-    /** @var array<int, array{sock: resource, buf: string, handshook: bool, admin: bool, role: string, class_ids: array<int, int>|null}> */
+    /**
+     * @var array<int, array{
+     *     sock: resource,
+     *     buf: string,
+     *     handshook: bool,
+     *     admin: bool,
+     *     role: string,
+     *     class_ids: array<int, int>|null,
+     *     user_id: int,
+     *     expires_at: int,
+     *     connected_at: float,
+     *     scope_checked_at: float
+     * }>
+     */
     private array $clients = [];
 
     private int $lastEventId = 0;
@@ -159,6 +172,10 @@ class RealtimeServeCommand extends Command
             'admin' => false,
             'role' => '',
             'class_ids' => null,
+            'user_id' => 0,
+            'expires_at' => 0,
+            'connected_at' => microtime(true),
+            'scope_checked_at' => microtime(true),
         ];
     }
 
@@ -223,14 +240,16 @@ class RealtimeServeCommand extends Command
         $request = Handshake::parseRequest($head);
 
         $token = $request['query']['token'] ?? null;
-        $userId = RealtimeToken::verify(\is_string($token) ? $token : null);
+        $claims = RealtimeToken::inspect(\is_string($token) ? $token : null);
 
-        if ($userId === null) {
+        if ($claims === null || $claims['expires_at'] < time()) {
             @fwrite($socket, Handshake::denialResponse(401, 'Token de feed en vivo inválido o vencido.'));
             $this->drop($clientId);
 
             return;
         }
+
+        $userId = $claims['user_id'];
 
         if (! Handshake::isUpgrade($request)) {
             @fwrite($socket, Handshake::denialResponse(426, 'Se requiere una actualización WebSocket.'));
@@ -251,6 +270,12 @@ class RealtimeServeCommand extends Command
         $this->clients[$clientId]['admin'] = $scope['admin'];
         $this->clients[$clientId]['role'] = $scope['role'];
         $this->clients[$clientId]['class_ids'] = $scope['class_ids'];
+        $this->clients[$clientId]['user_id'] = $userId;
+        // Auth is not frozen at handshake: the token expiry and the
+        // user's current role/classes are re-checked while connected.
+        $this->clients[$clientId]['expires_at'] = $claims['expires_at'];
+        $this->clients[$clientId]['connected_at'] = microtime(true);
+        $this->clients[$clientId]['scope_checked_at'] = microtime(true);
 
         $accept = Handshake::acceptKey($request['headers']['sec-websocket-key']);
         @fwrite($socket, Handshake::successResponse($accept));
@@ -393,6 +418,9 @@ class RealtimeServeCommand extends Command
         }
         $this->lastPollAt = microtime(true);
 
+        // Auth is a live property, not a handshake souvenir.
+        $this->maintainConnections();
+
         // ---- tap ----------------------------------------------------
         try {
             $rows = $this->feed->eventsAfter($this->lastEventId);
@@ -472,6 +500,67 @@ class RealtimeServeCommand extends Command
                 }
             }
         }
+    }
+
+    /**
+     * Token expiry, hard connection cap and role/class rescoping. Runs
+     * on every poll (the poll is the server's only clock).
+     */
+    private function maintainConnections(): void
+    {
+        $now = microtime(true);
+        $nowSeconds = time();
+        $maxLifetime = max(1, (int) config('realtime.max_connection_seconds', 3600));
+        $scopeRefresh = max(1, (int) config('realtime.scope_refresh_seconds', 45));
+
+        foreach (\array_keys($this->clients) as $clientId) {
+            $client = $this->clients[$clientId] ?? null;
+
+            if ($client === null || ! $client['handshook']) {
+                continue;
+            }
+
+            if ($nowSeconds >= $client['expires_at']) {
+                $this->close($clientId, 'token_expired');
+
+                continue;
+            }
+
+            if (($now - $client['connected_at']) >= $maxLifetime) {
+                $this->close($clientId, 'connection_lifetime');
+
+                continue;
+            }
+
+            if (($now - $client['scope_checked_at']) < $scopeRefresh) {
+                continue;
+            }
+
+            $scope = $this->resolveScope($client['user_id']);
+
+            // The account disappeared: close instead of serving stale data.
+            if ($scope === null) {
+                $this->close($clientId, 'user_gone');
+
+                continue;
+            }
+
+            $this->clients[$clientId]['admin'] = $scope['admin'];
+            $this->clients[$clientId]['role'] = $scope['role'];
+            $this->clients[$clientId]['class_ids'] = $scope['class_ids'];
+            $this->clients[$clientId]['scope_checked_at'] = $now;
+        }
+    }
+
+    /** Cierra el frame y el socket; el motivo nunca lleva datos de alumnos. */
+    private function close(int $clientId, string $reason): void
+    {
+        if (! isset($this->clients[$clientId])) {
+            return;
+        }
+
+        @fwrite($this->clients[$clientId]['sock'], WsFrame::encode($reason, WsFrame::OP_CLOSE));
+        $this->drop($clientId);
     }
 
     private function sendJson($socket, array $message): void
