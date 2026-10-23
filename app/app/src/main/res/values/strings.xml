@@ -124,6 +124,7 @@
     <string name="settings_password_hint">Contraseña de la cuenta del parlante</string>
     <string name="settings_password_saved">Contraseña guardada — escribe para cambiarla</string>
     <string name="settings_bad_address">Dirección no válida</string>
+    <string name="settings_save_failed">No se pudo guardar: el almacén seguro del teléfono no está disponible. Inténtalo de nuevo.</string>
     <string name="settings_save">Guardar</string>
     <string name="settings_login_speaker">Iniciar sesión del parlante</string>
     <string name="settings_version">EcoStation 1.0.0 · co.ecostation.app</string>
@@ -137,6 +138,7 @@
     <string name="student_email">Correo institucional</string>
     <string name="student_password">Contraseña</string>
     <string name="student_login">Entrar</string>
+    <string name="student_loading">Validando tu sesión…</string>
     <string name="student_change_title">Cambia tu contraseña</string>
     <string name="student_change_note">Debes cambiar tu contraseña para continuar</string>
     <string name="student_current_password">Contraseña actual</string>
@@ -164,7 +166,7 @@
     <!-- Vinculación: la llave propia de esta credencial -->
     <string name="link_phone">Vincular este teléfono</string>
     <string name="link_title">Vincular con EcoStation</string>
-    <string name="link_body">Hazlo en la mesa de emparejamiento: pide que armen tu nombre y que pongan el lector en modo EMPAREJAR. Luego acerca el teléfono al lector antes de un minuto.\n\nSe crea una llave nueva, solo para este teléfono, guardada en su almacén seguro. Si el teléfono ya estaba vinculado, deja de funcionar hasta que termines este paso.</string>
+    <string name="link_body">Hazlo en la mesa de emparejamiento: pide que armen tu nombre y que pongan el lector en modo EMPAREJAR. Luego acerca el teléfono al lector antes de un minuto.\n\nSe crea una llave nueva, solo para este teléfono, guardada en su almacén seguro. La llave actual sigue funcionando hasta que la estación reciba la nueva, así que puedes cancelar sin quedarte sin carné.</string>
     <string name="link_start">Empezar</string>
     <string name="link_failed">Este teléfono no pudo crear su llave segura. Inténtalo de nuevo; si sigue fallando, este teléfono no puede ser credencial.</string>
     <string name="state_linking">VINCULANDO %1$d:%2$02d</string>

@@ -48,4 +48,38 @@ class SealerTest {
         assertNull(Sealer.open(k, ""))
         assertNull(Sealer.open(k, null))
     }
+
+    @Test
+    fun a_ciphertext_cannot_be_swapped_between_fields() {
+        val token = Sealer.seal(k, "5|abc", "student_token".toByteArray())
+        val password = Sealer.seal(k, "clave", "speaker_password".toByteArray())
+        // Correct field opens.
+        assertEquals("5|abc", Sealer.open(k, token, "student_token".toByteArray()))
+        assertEquals("clave", Sealer.open(k, password, "speaker_password".toByteArray()))
+        // Swapped field names fail authentication.
+        assertNull(Sealer.open(k, token, "speaker_password".toByteArray()))
+        assertNull(Sealer.open(k, password, "student_token".toByteArray()))
+        assertNull(Sealer.open(k, token))
+    }
+
+    @Test
+    fun the_default_aad_keeps_the_old_call_shape() {
+        val s = Sealer.seal(k, "sin campo")
+        assertEquals("sin campo", Sealer.open(k, s))
+        // GCM treats no AAD and an empty AAD byte string the same.
+        assertEquals("sin campo", Sealer.open(k, s, ByteArray(0)))
+    }
+
+    @Test
+    fun openStrict_distinguishes_malformed_from_crypto_failure() {
+        assertNull(Sealer.openStrict(k, "v1:zz"))
+        assertNull(Sealer.openStrict(k, null))
+        val s = Sealer.seal(k, "x")
+        try {
+            Sealer.openStrict(otherKey, s)
+            org.junit.Assert.fail("a wrong key must throw, so the caller can tell it apart")
+        } catch (e: Exception) {
+            // expected
+        }
+    }
 }

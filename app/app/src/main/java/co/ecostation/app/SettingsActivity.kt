@@ -13,6 +13,7 @@ import android.widget.EditText
 import android.widget.Switch
 import android.widget.TextView
 import co.ecostation.app.net.BackendDiscovery
+import co.ecostation.app.net.BoundedRead
 import co.ecostation.app.net.EcoEndpoint
 import co.ecostation.app.store.AppSettings
 import co.ecostation.app.ui.BottomNav
@@ -93,6 +94,11 @@ class SettingsActivity : Activity() {
     /**
      * Una dirección no vacía que [EcoEndpoint.parseManual] rechaza no guarda
      * nada: se avisa aquí y no se deja el error para el momento de conectar.
+     *
+     * El sellado del correo/contraseña usa el Keystore y puede fallar en el
+     * hilo de la interfaz; se escribe en un hilo normal y, si el almacén
+     * seguro no responde, se muestra un error en español en vez de tumbar la
+     * app. Guardar «Buscar automáticamente» borra la dirección fijada.
      */
     private fun save() {
         val typed = address.text.toString().trim()
@@ -109,19 +115,40 @@ class SettingsActivity : Activity() {
         }
         error.visibility = View.GONE
 
-        settings.serverAddress = endpoint?.toString()
-        settings.speakerEmail = email.text.toString().trim().ifEmpty { null }
+        val saveButton = findViewById<Button>(R.id.saveSettings)
+        saveButton.isEnabled = false
+        val addressValue = endpoint?.toString()
+        val emailValue = email.text.toString().trim().ifEmpty { null }
         val newPassword = password.text.toString()
-        if (newPassword.isNotEmpty()) settings.speakerPassword = newPassword
-        // «Iniciar sesión del parlante» deja el modo encendido y vuelve a la
-        // pestaña Parlante, donde el interruptor y el estado quedan a la vista.
-        settings.speakerEnabled = true
-        startActivity(
-            Intent(this, MainActivity::class.java)
-                .putExtra(MainActivity.EXTRA_SECTION, MainActivity.SECTION_SPEAKER)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
-        )
-        finish()
+
+        Thread({
+            var saved = true
+            try {
+                settings.serverAddress = addressValue
+                settings.speakerEmail = emailValue
+                if (newPassword.isNotEmpty()) settings.speakerPassword = newPassword
+                // «Iniciar sesión del parlante» deja el modo encendido y vuelve
+                // a la pestaña Parlante, donde el interruptor queda a la vista.
+                settings.speakerEnabled = true
+            } catch (e: Exception) {
+                saved = false
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                saveButton.isEnabled = true
+                if (!saved) {
+                    error.setText(R.string.settings_save_failed)
+                    error.visibility = View.VISIBLE
+                    return@runOnUiThread
+                }
+                startActivity(
+                    Intent(this, MainActivity::class.java)
+                        .putExtra(MainActivity.EXTRA_SECTION, MainActivity.SECTION_SPEAKER)
+                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                )
+                finish()
+            }
+        }, "eco-settings-save").apply { isDaemon = true; start() }
     }
 
     /**
@@ -157,13 +184,12 @@ class SettingsActivity : Activity() {
                     conn.readTimeout = 2_500
                     conn.instanceFollowRedirects = false
                     val code = conn.responseCode
-                    val body = if (code == 200) {
-                        conn.inputStream.bufferedReader().use { it.readText() }
-                    } else {
-                        conn.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                    }
+                    val body = BoundedRead.read(
+                        if (code == 200) conn.inputStream else conn.errorStream,
+                        BoundedRead.SMALL_MAX,
+                    )
                     conn.disconnect()
-                    if (code == 200 && body.contains("\"start_url\"")) {
+                    if (code == 200 && EcoEndpoint.isEcoStationManifest(body)) {
                         latency = SystemClock.elapsedRealtime() - started
                     }
                 }

@@ -143,6 +143,7 @@
                 android:layout_width="match_parent"
                 android:drawableStart="@drawable/ic_mail_18"
                 android:hint="@string/settings_email_hint"
+                android:importantForAutofill="no"
                 android:inputType="textEmailAddress" />
 
             <co.ecostation.app.ui.EcoTextView
@@ -157,6 +158,7 @@
                 style="@style/Eco.Input"
                 android:layout_width="match_parent"
                 android:drawableStart="@drawable/ic_lock_18"
+                android:importantForAutofill="no"
                 android:inputType="textPassword" />
 
             <co.ecostation.app.ui.EcoButton

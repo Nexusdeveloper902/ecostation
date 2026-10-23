@@ -2,8 +2,10 @@ package co.ecostation.app.store
 
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import java.security.KeyStore
+import java.security.UnrecoverableKeyException
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 
@@ -18,8 +20,10 @@ import javax.crypto.SecretKey
  *
  * The key needs no user authentication and is not StrongBox-backed: the
  * speaker runs unattended at the station and must reconnect after a reboot.
- * If a value cannot be opened (the key was invalidated), the getter returns
- * null and drops the stale value, so the person simply signs in again.
+ * A value that cannot be opened because the key was permanently invalidated
+ * is dropped (all sealed values die with that key) and the person signs in
+ * again. A transient Keystore/provider failure keeps the ciphertext: the
+ * getter returns null for now, but nothing is destroyed.
  */
 class AppSettings(context: Context) {
 
@@ -41,6 +45,15 @@ class AppSettings(context: Context) {
         get() = plain.getBoolean(KEY_SPEAKER_ENABLED, false)
         set(value) = plain.edit().putBoolean(KEY_SPEAKER_ENABLED, value).apply()
 
+    /**
+     * True from the moment a link window opens until the first CHALLENGE the
+     * reader answers `9000` (or the link is cancelled). It is only a UI flag,
+     * never a secret: the old key keeps working while it is set.
+     */
+    var linkPending: Boolean
+        get() = plain.getBoolean(KEY_LINK_PENDING, false)
+        set(value) = plain.edit().putBoolean(KEY_LINK_PENDING, value).apply()
+
     // ----------------------------------------------------------- sealed prefs
 
     var speakerEmail: String?
@@ -55,15 +68,47 @@ class AppSettings(context: Context) {
         get() = readSealed(KEY_STUDENT_TOKEN)
         set(value) = writeSealed(KEY_STUDENT_TOKEN, value)
 
+    private sealed class ReadResult {
+        data class Value(val text: String) : ReadResult()
+        object Malformed : ReadResult()
+        object Invalidated : ReadResult()
+        object Unavailable : ReadResult()
+    }
+
+    /**
+     * Read one sealed entry.
+     *
+     * - A damaged *format* is dropped: it can never open.
+     * - An invalidated/unrecoverable KEY wipes every sealed value and the key
+     *   once: they were all sealed under the same dead key.
+     * - Any other crypto/provider failure is "unavailable": the ciphertext is
+     *   kept, the getter returns null, and a later read can still succeed.
+     */
     private fun readSealed(name: String): String? {
         val stored = sealed.getString(name, null) ?: return null
-        val opened = try {
-            Sealer.open(keystoreKey(), stored)
-        } catch (e: Exception) {
-            null
+        return when (val result = readSealedResult(name, stored)) {
+            is ReadResult.Value -> result.text
+            ReadResult.Malformed -> null
+            ReadResult.Invalidated -> {
+                sealed.edit().clear().apply()
+                deleteKey()
+                null
+            }
+            ReadResult.Unavailable -> null
         }
-        if (opened == null) sealed.edit().remove(name).apply()
-        return opened
+    }
+
+    private fun readSealedResult(name: String, stored: String): ReadResult = try {
+        val opened = Sealer.openStrict(keystoreKey(), stored, aad(name))
+        if (opened == null) {
+            // Wrong prefix, bad hex or truncated payload: unrecoverable format.
+            sealed.edit().remove(name).apply()
+            ReadResult.Malformed
+        } else {
+            ReadResult.Value(opened)
+        }
+    } catch (e: Exception) {
+        if (isKeyInvalidated(e)) ReadResult.Invalidated else ReadResult.Unavailable
     }
 
     private fun writeSealed(name: String, value: String?) {
@@ -72,14 +117,33 @@ class AppSettings(context: Context) {
             return
         }
         val encrypted = try {
-            Sealer.seal(keystoreKey(), value)
+            Sealer.seal(keystoreKey(), value, aad(name))
         } catch (e: Exception) {
-            // An invalidated or unusable key is replaced: nothing sealed with
-            // it can be read anyway, and the user signs in again.
+            if (!isKeyInvalidated(e)) throw e
+            // The key itself is gone; every sealed value is dead with it.
+            sealed.edit().clear().apply()
             deleteKey()
-            Sealer.seal(keystoreKey(), value)
+            Sealer.seal(keystoreKey(), value, aad(name))
         }
         sealed.edit().putString(name, encrypted).apply()
+    }
+
+    private fun aad(name: String): ByteArray = name.toByteArray(Charsets.UTF_8)
+
+    /** Only a permanently invalidated / unrecoverable key may be rotated. */
+    private fun isKeyInvalidated(error: Throwable?): Boolean {
+        var current = error
+        var depth = 0
+        while (current != null && depth < 8) {
+            if (current is KeyPermanentlyInvalidatedException ||
+                current is UnrecoverableKeyException
+            ) {
+                return true
+            }
+            current = current.cause
+            depth++
+        }
+        return false
     }
 
     // --------------------------------------------------------------- keystore
@@ -122,6 +186,7 @@ class AppSettings(context: Context) {
 
         const val KEY_SERVER_ADDRESS = "server_address"
         const val KEY_SPEAKER_ENABLED = "speaker_enabled"
+        const val KEY_LINK_PENDING = "link_pending"
         const val KEY_SPEAKER_EMAIL = "speaker_email"
         const val KEY_SPEAKER_PASSWORD = "speaker_password"
         const val KEY_STUDENT_TOKEN = "student_token"
