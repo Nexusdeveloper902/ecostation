@@ -1,7 +1,11 @@
 <?php
 
+use App\Http\Controllers\Web\Admin\CardController as AdminCardController;
 use App\Http\Controllers\Web\Admin\ClassController as AdminClassController;
+use App\Http\Controllers\Web\Admin\PairingController as AdminPairingController;
+use App\Http\Controllers\Web\Admin\SettingsController as AdminSettingsController;
 use App\Http\Controllers\Web\Admin\StaffController as AdminStaffController;
+use App\Http\Controllers\Web\Admin\StationController as AdminStationController;
 use App\Http\Controllers\Web\Admin\StudentController as AdminStudentController;
 use App\Http\Controllers\Web\AuthController;
 use App\Http\Controllers\Web\DepositPhotoController;
@@ -103,5 +107,24 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/staff', [AdminStaffController::class, 'index'])->name('staff');
         Route::post('/staff', [AdminStaffController::class, 'store'])->name('staff.store');
+
+        // Stations and keys.
+        Route::get('/stations', [AdminStationController::class, 'index'])->name('stations');
+        Route::post('/stations', [AdminStationController::class, 'store'])->name('stations.store');
+        Route::post('/stations/{reader}/rotate-key', [AdminStationController::class, 'rotateKey'])->name('stations.rotate');
+        Route::delete('/stations/{reader}', [AdminStationController::class, 'destroy'])->name('stations.destroy');
+
+        // Pairing desk.
+        Route::get('/pairing', [AdminPairingController::class, 'index'])->name('pairing');
+        Route::post('/pairing/arm', [AdminPairingController::class, 'arm'])->name('pairing.arm');
+        Route::get('/pairing/status', [AdminPairingController::class, 'status'])->name('pairing.status');
+
+        // Credentials.
+        Route::post('/cards/{card}/revoke', [AdminCardController::class, 'revoke'])->name('cards.revoke');
+        Route::delete('/cards/{card}', [AdminCardController::class, 'destroy'])->name('cards.destroy');
+
+        // Settings.
+        Route::get('/settings', [AdminSettingsController::class, 'index'])->name('settings');
+        Route::put('/settings', [AdminSettingsController::class, 'update'])->name('settings.update');
     });
 });

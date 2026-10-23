@@ -191,10 +191,12 @@ CSV;
     }
 
     #[Test]
-    public function teacher_and_station_users_get_403_on_every_admin_roster_route(): void
+    public function teacher_and_station_users_get_403_on_every_admin_route(): void
     {
         $classId = $this->classId('5° A');
         $studentId = $this->studentId('Maria González');
+        $readerId = $this->reader()->id;
+        $cardId = $this->cardOf('Maria González')->id;
 
         $routes = [
             ['get', '/admin/students'],
@@ -206,6 +208,17 @@ CSV;
             ['put', "/admin/classes/{$classId}/teachers"],
             ['get', '/admin/staff'],
             ['post', '/admin/staff'],
+            ['get', '/admin/stations'],
+            ['post', '/admin/stations'],
+            ['post', "/admin/stations/{$readerId}/rotate-key"],
+            ['delete', "/admin/stations/{$readerId}"],
+            ['get', '/admin/pairing'],
+            ['post', '/admin/pairing/arm'],
+            ['get', '/admin/pairing/status'],
+            ['post', "/admin/cards/{$cardId}/revoke"],
+            ['delete', "/admin/cards/{$cardId}"],
+            ['get', '/admin/settings'],
+            ['put', '/admin/settings'],
         ];
 
         foreach ([$this->teacher(), User::where('email', 'estacion@ecostation.test')->firstOrFail()] as $user) {

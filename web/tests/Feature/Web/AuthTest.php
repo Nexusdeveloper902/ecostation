@@ -120,4 +120,19 @@ class AuthTest extends TestCase
     {
         $this->get('/login')->assertOk()->assertSee('name="_token"', false);
     }
+
+    #[Test]
+    public function the_landing_page_lands_each_role_on_its_own_first_page(): void
+    {
+        $targets = [
+            'admin' => route('admin.students'),
+            'teacher' => route('teacher.dashboard'),
+            'student' => route('student.dashboard'),
+            'station' => route('station'),
+        ];
+
+        foreach ($targets as $role => $target) {
+            $this->actingAs($this->user($role))->get('/')->assertRedirect($target);
+        }
+    }
 }
