@@ -72,12 +72,17 @@ android {
     }
 }
 
-tasks.matching { it.name == "packageRelease" }.configureEach {
-    doFirst {
-        if (!signingComplete || keyInsideRepo) {
-            throw GradleException("Falta la llave de firma de release: ver app/README.md §Firma")
-        }
+fun requireReleaseSigning() {
+    if (!signingComplete || keyInsideRepo) {
+        throw GradleException("Falta la llave de firma de release: ver app/README.md §Firma de release")
     }
+}
+
+// `preReleaseBuild` is a dependency of BOTH the APK graph (assembleRelease)
+// and the bundle graph (bundleRelease). Guarding it closes the hole where
+// packageReleaseBundle/signReleaseBundle produced an unsigned AAB.
+tasks.matching { it.name == "preReleaseBuild" || it.name == "packageRelease" }.configureEach {
+    doFirst { requireReleaseSigning() }
 }
 
 dependencies {
