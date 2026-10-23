@@ -25,6 +25,7 @@ Uso: announce.py --port 8000 [--name EcoStation] [--host jperez] [--interval 1]
 """
 import argparse
 import fcntl
+import math
 import socket
 import struct
 import sys
@@ -37,6 +38,55 @@ TTL = 120
 CLASS_IN = 1
 CACHE_FLUSH = 0x8000
 T_A, T_PTR, T_TXT, T_SRV = 1, 12, 16, 33
+
+MAX_DNS_LABEL_BYTES = 63
+MAX_DNS_NAME_BYTES = 253
+
+
+def validate_name(raw):
+    """Nombre de instancia/servicio: etiquetas DNS-SD válidas (<=63 bytes)."""
+    value = str(raw).strip()
+    if not value:
+        raise ValueError("el nombre no puede estar vacío")
+    if len(value.encode("utf-8")) > MAX_DNS_NAME_BYTES:
+        raise ValueError(f"el nombre supera {MAX_DNS_NAME_BYTES} bytes")
+    for label in value.rstrip(".").split("."):
+        encoded = label.encode("utf-8")
+        if not encoded:
+            raise ValueError("el nombre contiene una etiqueta vacía")
+        if len(encoded) > MAX_DNS_LABEL_BYTES:
+            raise ValueError(
+                f"cada etiqueta del nombre debe medir máximo {MAX_DNS_LABEL_BYTES} bytes"
+            )
+    return value
+
+
+def name_arg(raw):
+    try:
+        return validate_name(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def port_arg(raw):
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("el puerto debe ser un entero") from exc
+    if not 1 <= value <= 65535:
+        raise argparse.ArgumentTypeError("el puerto debe estar entre 1 y 65535")
+    return value
+
+
+def interval_arg(raw):
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("el intervalo debe ser un número") from exc
+    if not math.isfinite(value) or value < 0:
+        raise argparse.ArgumentTypeError("el intervalo no puede ser negativo")
+    return value
+
 
 
 def name(n):
@@ -109,10 +159,10 @@ def send(ipv4, payload):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, required=True)
-    ap.add_argument("--name", default="EcoStation")
-    ap.add_argument("--host", default=socket.gethostname().split(".")[0])
-    ap.add_argument("--interval", type=float, default=1.0)
+    ap.add_argument("--port", type=port_arg, required=True)
+    ap.add_argument("--name", type=name_arg, default="EcoStation")
+    ap.add_argument("--host", type=name_arg, default=socket.gethostname().split(".")[0])
+    ap.add_argument("--interval", type=interval_arg, default=1.0)
     ap.add_argument("--once", action="store_true", help="una ronda y termina (diagnóstico)")
     args = ap.parse_args()
 

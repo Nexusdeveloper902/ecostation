@@ -17,6 +17,7 @@ jobs:
           php-version: '8.3'
           extensions: pdo_sqlite
       - run: composer install --no-interaction --prefer-dist
+      - run: composer audit --locked --no-interaction
       - run: cp .env.example .env
       - run: php artisan key:generate
       - run: vendor/bin/pint --test

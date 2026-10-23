@@ -65,4 +65,119 @@ class ScriptsTest extends TestCase
         $this->assertStringContainsString('wait -n', $run);
         $this->assertStringContainsString('trap ', $run);
     }
+
+    #[Test]
+    public function the_announcer_rejects_invalid_cli_values(): void
+    {
+        if ($this->python() === null) {
+            $this->markTestSkipped('python3 no está disponible');
+        }
+
+        [$code, $output] = $this->announcer(['--port' => '0']);
+        $this->assertNotSame(0, $code);
+        $this->assertStringContainsString('puerto', $output);
+
+        [$code, $output] = $this->announcer(['--port' => '70000']);
+        $this->assertNotSame(0, $code);
+        $this->assertStringContainsString('65535', $output);
+
+        [$code, $output] = $this->announcer(['--port' => '8000', '--interval' => '-1']);
+        $this->assertNotSame(0, $code);
+        $this->assertStringContainsString('negativo', $output);
+
+        [$code, $output] = $this->announcer(['--port' => '8000', '--name' => str_repeat('a', 64)]);
+        $this->assertNotSame(0, $code);
+        $this->assertStringContainsString('etiqueta', $output);
+    }
+
+    #[Test]
+    public function the_announcer_validates_labels_and_ports_in_its_helpers(): void
+    {
+        if ($this->python() === null) {
+            $this->markTestSkipped('python3 no está disponible');
+        }
+
+        $script = base_path('scripts/mdns/announce.py');
+        $probe = <<<'PY'
+import importlib.util
+import sys
+spec = importlib.util.spec_from_file_location("announce", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+assert mod.validate_name("EcoStation")
+assert mod.validate_name("a.b")
+assert mod.port_arg("65535") == 65535
+assert mod.interval_arg("0") == 0.0
+for bad in ["", "a" * 64, "a..b"]:
+    try:
+        mod.validate_name(bad)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("validate_name accepted %r" % bad)
+for bad in ["0", "65536", "-1", "abc"]:
+    try:
+        mod.port_arg(bad)
+    except Exception:
+        pass
+    else:
+        raise AssertionError("port_arg accepted %r" % bad)
+for bad in ["-0.1", "nan", "inf", "abc"]:
+    try:
+        mod.interval_arg(bad)
+    except Exception:
+        pass
+    else:
+        raise AssertionError("interval_arg accepted %r" % bad)
+print("ok")
+PY;
+
+        [$code, $output] = $this->pythonCommand([$this->python(), '-c', $probe, $script]);
+        $this->assertSame(0, $code, $output);
+        $this->assertStringContainsString('ok', $output);
+    }
+
+    // ---------------------------------------------------------------- helpers
+
+    private function python(): ?string
+    {
+        static $path = false;
+
+        if ($path === false) {
+            $found = trim((string) shell_exec('command -v python3 2>/dev/null'));
+            $path = $found !== '' ? $found : null;
+        }
+
+        return $path;
+    }
+
+    /**
+     * @param  array<string, string>  $args
+     * @return array{0: int, 1: string}
+     */
+    private function announcer(array $args): array
+    {
+        $command = [$this->python(), base_path('scripts/mdns/announce.py')];
+
+        foreach ($args as $flag => $value) {
+            $command[] = $flag;
+            $command[] = $value;
+        }
+
+        return $this->pythonCommand($command);
+    }
+
+    /**
+     * @param  array<int, string|null>  $parts
+     * @return array{0: int, 1: string}
+     */
+    private function pythonCommand(array $parts): array
+    {
+        $command = implode(' ', array_map(fn ($part) => escapeshellarg((string) $part), $parts)).' 2>&1';
+        $output = [];
+        $code = 0;
+        exec($command, $output, $code);
+
+        return [$code, implode("\n", $output)];
+    }
 }
