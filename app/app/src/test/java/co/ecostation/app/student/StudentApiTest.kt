@@ -182,9 +182,11 @@ class StudentApiTest {
     }
 
     @Test
-    fun malformed_success_body_is_a_server_error() {
+    fun malformed_success_body_is_an_invalid_response() {
         fake.on("GET /api/v1/me/balance", 200, "<html>")
-        assertEquals(ApiException.Kind.SERVER, assertThrows(ApiException::class.java) { api.balance("t") }.kind)
+        val e = assertThrows(ApiException::class.java) { api.balance("t") }
+        assertEquals(ApiException.Kind.SERVER, e.kind)
+        assertTrue(e.message!!.contains("respuesta no válida"))
     }
 
     /**

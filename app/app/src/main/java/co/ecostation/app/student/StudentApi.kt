@@ -1,5 +1,6 @@
 package co.ecostation.app.student
 
+import co.ecostation.app.net.BoundedRead
 import co.ecostation.app.net.EcoEndpoint
 import org.json.JSONArray
 import org.json.JSONObject
@@ -162,13 +163,13 @@ class StudentApi(private val endpoint: EcoEndpoint) {
         isRecyclable = obj.optBoolean("is_recyclable", false),
     )
 
-    /** Any parse failure on a 2xx body is a server error, never a crash. */
+    /** Any parse failure on a 2xx body is an invalid response, never a crash. */
     private fun <T> parse(response: Response, block: (JSONObject) -> T): T = try {
         block(JSONObject(response.body))
     } catch (e: ApiException) {
         throw e
     } catch (e: Exception) {
-        throw failed(response.code)
+        throw invalidResponse()
     }
 
     /** First message under `errors`, which the server sends in Spanish. */
@@ -218,6 +219,11 @@ class StudentApi(private val endpoint: EcoEndpoint) {
         "El servidor respondió con un error (HTTP $code)",
     )
 
+    private fun invalidResponse() = ApiException(
+        ApiException.Kind.SERVER,
+        "El servidor envió una respuesta no válida",
+    )
+
     // --------------------------------------------------------------- network
 
     private data class Response(val code: Int, val body: String)
@@ -252,7 +258,7 @@ class StudentApi(private val endpoint: EcoEndpoint) {
                 ""
             } else {
                 val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-                stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                BoundedRead.read(stream, BoundedRead.JSON_MAX)
             }
             return Response(code, body)
         } finally {

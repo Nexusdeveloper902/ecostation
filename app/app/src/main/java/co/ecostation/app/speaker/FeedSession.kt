@@ -1,5 +1,6 @@
 package co.ecostation.app.speaker
 
+import co.ecostation.app.net.BoundedRead
 import co.ecostation.app.net.EcoEndpoint
 import org.json.JSONObject
 import java.io.IOException
@@ -51,7 +52,7 @@ class FeedSession(private val email: String, private val password: String) {
         absorbCookies(conn, jar)
         return when (code) {
             200 -> {
-                val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+                val json = JSONObject(BoundedRead.read(conn.inputStream, BoundedRead.JSON_MAX))
                 val token = json.getString("token")
                 // The backend builds the ws:// URL from the Host we dialled,
                 // so it already points at the discovered address.
@@ -69,11 +70,15 @@ class FeedSession(private val email: String, private val password: String) {
         val page = open(endpoint, "/login", jar)
         val pageCode = page.responseCode
         absorbCookies(page, jar)
-        if (pageCode != 200) throw IOException("GET /login respondió HTTP $pageCode")
-        val html = page.inputStream.bufferedReader().use { it.readText() }
+        if (pageCode == 429) throw Throttled()
+        // Every failed exchange on the login routes is an authentication
+        // failure, so the bridge applies its 30 s backoff instead of hammering
+        // /login (5 attempts/minute). Only socket/connect errors stay fast.
+        if (pageCode != 200) throw LoginRejected("GET /login respondió HTTP $pageCode")
+        val html = BoundedRead.read(page.inputStream, BoundedRead.SMALL_MAX)
         page.disconnect()
         val csrf = csrfToken(html)
-            ?: throw IOException("no hay token CSRF en /login — ¿el servidor es EcoStation?")
+            ?: throw LoginRejected("no hay token CSRF en /login — ¿el servidor es EcoStation?")
 
         val post = open(endpoint, "/login", jar)
         post.requestMethod = "POST"
@@ -91,7 +96,8 @@ class FeedSession(private val email: String, private val password: String) {
             // A failed attempt redirects back to the login form.
             code == 302 && location.substringBefore('?').endsWith("/login") ->
                 throw LoginRejected("la cuenta del parlante no puede iniciar sesión: revisa su correo y contraseña")
-            code != 302 -> throw IOException("POST /login respondió HTTP $code")
+            // 419 (CSRF), 500, a malformed redirect, anything else: auth failure.
+            code != 302 -> throw LoginRejected("POST /login respondió HTTP $code — revisa la cuenta del parlante")
         }
     }
 

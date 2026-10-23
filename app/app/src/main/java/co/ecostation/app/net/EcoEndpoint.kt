@@ -1,5 +1,7 @@
 package co.ecostation.app.net
 
+import java.util.Locale
+
 /**
  * The EcoStation server address. Pure Kotlin, host-tested.
  *
@@ -7,6 +9,13 @@ package co.ecostation.app.net
  * port, TXT protocol=1. The `protocol` TXT is a compatibility gate: absent =
  * accepted, anything but "1" = rejected. A manual address always wins over
  * discovery.
+ *
+ * **Only LAN HTTP is supported.** The app sends a Sanctum bearer token and the
+ * station password over this connection, so a public host is refused even
+ * though the manifest enables cleartext for the LAN. Accepted hosts are:
+ * private IPv4 literals (10/8, 172.16/12, 192.168/16, 169.254/16) and
+ * `*.local` / `*.lan` names. `https://` is still rejected: supporting it would
+ * need TLS in [co.ecostation.app.speaker.WsClient], not just a scheme swap.
  */
 data class EcoEndpoint(val host: String, val port: Int) {
     val baseUrl: String get() = "http://${hostLiteral()}:$port"
@@ -30,33 +39,71 @@ data class EcoEndpoint(val host: String, val port: Int) {
 
         /**
          * Selection policy (same as firmware `pickEcoEndpoint`): first
-         * candidate with a usable address, a non-zero port and a compatible
-         * protocol TXT. IPv4 answers are preferred over IPv6 ones — the
-         * backend's documented serve bind is `--host=0.0.0.0` (IPv4 only).
+         * candidate with a LAN address, a non-zero port and a compatible
+         * protocol TXT. Non-LAN answers (public IPv4, cellular IPv6) are
+         * discarded before selection.
          */
         fun pick(candidates: List<Candidate>): EcoEndpoint? = candidates
-            .filter { !it.ip.isNullOrBlank() && it.ip != "0.0.0.0" && it.port in 1..65535 }
+            .filter { !it.ip.isNullOrBlank() && it.port in 1..65535 }
             .filter { protocolCompatible(it.protocolTxt) }
-            .sortedBy { if (':' in it.ip!!) 1 else 0 }
+            .filter { isLanHost(it.ip!!) }
             .firstOrNull()
             ?.let { EcoEndpoint(it.ip!!, it.port) }
 
         private val HOST = Regex("[A-Za-z0-9.-]+")
         private val IPV4 = Regex("""(\d{1,3})(\.\d{1,3}){3}""")
+        private val MANIFEST_NAME = Regex(""""name"\s*:\s*"EcoStation"""")
+
+        /**
+         * The only hosts this app will send credentials to: a private IPv4
+         * literal or a `.local` / `.lan` name. Loopback, `0.0.0.0`, public
+         * IPv4 and IPv6 are refused.
+         */
+        fun isLanHost(host: String): Boolean {
+            val h = host.trim().lowercase(Locale.ROOT)
+            if (h.isEmpty() || ':' in h) return false
+            if (IPV4.matches(h)) {
+                val parts = h.split('.').map { it.toIntOrNull() ?: return false }
+                if (parts.any { it !in 0..255 }) return false
+                val a = parts[0]
+                val b = parts[1]
+                if (a == 0 || a == 127) return false
+                return a == 10 ||
+                    (a == 172 && b in 16..31) ||
+                    (a == 192 && b == 168) ||
+                    (a == 169 && b == 254)
+            }
+            if (!HOST.matches(h) || h == "localhost") return false
+            return h.endsWith(".local") || h.endsWith(".lan")
+        }
+
+        /** The web manifest an EcoStation backend publishes. */
+        fun isEcoStationManifest(body: String): Boolean =
+            body.contains("\"start_url\"") && MANIFEST_NAME.containsMatchIn(body)
 
         /**
          * Typed address: `host`, `host:port` or `http://host[:port]/`. Port
-         * defaults to [DEFAULT_API_PORT]. Plain http only; loopback is refused
-         * (it would be the phone itself), as in the firmware.
+         * defaults to [DEFAULT_API_PORT]. Only LAN HTTP is accepted; loopback
+         * and `0.0.0.0` are refused (they are the phone itself or a wildcard).
          */
         fun parseManual(text: String?): EcoEndpoint? {
-            val t = text?.trim()?.removePrefix("http://")?.trimEnd('/') ?: return null
-            val host = t.substringBefore(':')
-            val port = if (':' in t) t.substringAfter(':').toIntOrNull() ?: return null else DEFAULT_API_PORT
-            val ok = HOST.matches(host) && port in 1..65535 &&
-                (!IPV4.matches(host) || host.split('.').all { it.toInt() <= 255 }) &&
-                host != "localhost" && !host.startsWith("127.")
-            return if (ok) EcoEndpoint(host, port) else null
+            val raw = text?.trim() ?: return null
+            if (raw.isEmpty()) return null
+            val withoutScheme = when {
+                raw.startsWith("http://", ignoreCase = true) -> raw.substring(7)
+                "://" in raw -> return null // https, ws, anything else: unsupported
+                else -> raw
+            }
+            val body = withoutScheme.trimEnd('/')
+            if (body.isEmpty() || '/' in body || body.count { it == ':' } > 1) return null
+            val host = body.substringBefore(':')
+            val port = if (':' in body) {
+                body.substringAfter(':').toIntOrNull() ?: return null
+            } else {
+                DEFAULT_API_PORT
+            }
+            if (port !in 1..65535 || !isLanHost(host)) return null
+            return EcoEndpoint(host.lowercase(Locale.ROOT), port)
         }
 
         /** Manual address if one is typed (valid or not), else [discover]. */

@@ -62,12 +62,40 @@ class FeedSessionTest {
         }
     }
 
+    @Test
+    fun failed_login_exchanges_are_auth_failures_so_the_bridge_backs_off() {
+        // A 500 on POST /login must not look like a socket error (fast retry).
+        FakeBackend(postStatus = 500).use { backend ->
+            val session = FeedSession("station@ecostation.test", "password")
+            assertThrows(FeedSession.LoginRejected::class.java) {
+                session.ticket(EcoEndpoint("127.0.0.1", backend.port))
+            }
+        }
+        // A 419 (expired CSRF) or a form without the token is the same class.
+        FakeBackend(postStatus = 419).use { backend ->
+            val session = FeedSession("station@ecostation.test", "password")
+            assertThrows(FeedSession.LoginRejected::class.java) {
+                session.ticket(EcoEndpoint("127.0.0.1", backend.port))
+            }
+        }
+        FakeBackend(omitCsrf = true).use { backend ->
+            val session = FeedSession("station@ecostation.test", "password")
+            assertThrows(FeedSession.LoginRejected::class.java) {
+                session.ticket(EcoEndpoint("127.0.0.1", backend.port))
+            }
+        }
+    }
+
     /**
      * The routes the bridge touches, with Laravel's observable behaviour,
      * over a raw socket (the android.jar test classpath has no
      * com.sun.net.httpserver).
      */
-    private class FakeBackend(private val refuseFeed: Boolean = false) : AutoCloseable {
+    private class FakeBackend(
+        private val refuseFeed: Boolean = false,
+        private val postStatus: Int? = null,
+        private val omitCsrf: Boolean = false,
+    ) : AutoCloseable {
         private val socket = ServerSocket(0)
         val port get() = socket.localPort
         val sessions: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet())
@@ -109,20 +137,25 @@ class FeedSessionTest {
             when {
                 path == "/login" && method == "GET" -> {
                     extra.append("Set-Cookie: ecostation_session=guest${counter++}; path=/; httponly\r\n")
-                    content = """<input type="hidden" name="_token" value="csrf-1" autocomplete="off">"""
+                    content = if (omitCsrf) "<html></html>"
+                    else """<input type="hidden" name="_token" value="csrf-1" autocomplete="off">"""
                 }
                 path == "/login" -> {
-                    status = "302 Found"
-                    val ok = "_token=csrf-1" in body && "password=password" in body &&
-                        "ecostation_session=guest" in cookie
-                    if (ok) {
-                        logins++
-                        val sid = "auth${counter++}"
-                        sessions.add(sid)
-                        extra.append("Set-Cookie: ecostation_session=$sid; path=/; httponly\r\n")
-                        extra.append("Location: http://127.0.0.1:$port/station\r\n")
+                    if (postStatus != null) {
+                        status = "$postStatus Error"
                     } else {
-                        extra.append("Location: http://127.0.0.1:$port/login\r\n")
+                        status = "302 Found"
+                        val ok = "_token=csrf-1" in body && "password=password" in body &&
+                            "ecostation_session=guest" in cookie
+                        if (ok) {
+                            logins++
+                            val sid = "auth${counter++}"
+                            sessions.add(sid)
+                            extra.append("Set-Cookie: ecostation_session=$sid; path=/; httponly\r\n")
+                            extra.append("Location: http://127.0.0.1:$port/station\r\n")
+                        } else {
+                            extra.append("Location: http://127.0.0.1:$port/login\r\n")
+                        }
                     }
                 }
                 path == "/realtime/token" -> {

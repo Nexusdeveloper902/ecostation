@@ -155,7 +155,7 @@ class BackendDiscovery(context: Context) {
         emptyList()
     }
 
-    private fun isCellular(name: String) = CELLULAR_PREFIXES.any { name.startsWith(it) }
+    private fun isCellular(name: String) = isCellularInterface(name)
 
     private fun portOpen(endpoint: EcoEndpoint): Boolean = try {
         Socket().use { it.connect(InetSocketAddress(endpoint.host, endpoint.port), PROBE_CONNECT_MS) }
@@ -164,21 +164,28 @@ class BackendDiscovery(context: Context) {
         false
     }
 
-    /** `/manifest.webmanifest` is a public, EcoStation web route. */
-    private fun looksLikeEcoStation(endpoint: EcoEndpoint): Boolean = try {
-        val conn = URL(endpoint.baseUrl + "/manifest.webmanifest").openConnection() as HttpURLConnection
-        conn.connectTimeout = 1_500
-        conn.readTimeout = 1_500
-        conn.instanceFollowRedirects = false
-        val ok = conn.responseCode == 200 &&
-            conn.inputStream.bufferedReader().use { it.readText() }.contains("\"start_url\"")
-        conn.disconnect()
-        ok
-    } catch (e: Exception) {
-        false
+    /**
+     * `/manifest.webmanifest` is a public, EcoStation web route. It must carry
+     * both the app name and `start_url`; a bare `start_url` is not enough to
+     * prove the host is ours before the station password is submitted.
+     */
+    private fun looksLikeEcoStation(endpoint: EcoEndpoint): Boolean {
+        if (!EcoEndpoint.isLanHost(endpoint.host)) return false
+        return try {
+            val conn = URL(endpoint.baseUrl + "/manifest.webmanifest").openConnection() as HttpURLConnection
+            conn.connectTimeout = 1_500
+            conn.readTimeout = 1_500
+            conn.instanceFollowRedirects = false
+            val ok = conn.responseCode == 200 &&
+                EcoEndpoint.isEcoStationManifest(BoundedRead.read(conn.inputStream, BoundedRead.SMALL_MAX))
+            conn.disconnect()
+            ok
+        } catch (e: Exception) {
+            false
+        }
     }
 
-    private companion object {
+    companion object {
         const val BROWSE_TIMEOUT_MS = 5_000L
         const val SIBLING_WAIT_MS = 400L
         const val RESOLVE_TIMEOUT_MS = 4_000L
@@ -186,6 +193,16 @@ class BackendDiscovery(context: Context) {
         const val PROBE_THREADS = 48
         const val PROBE_CONNECT_MS = 500
         const val PROBE_BUDGET_MS = 15_000L
-        val CELLULAR_PREFIXES = listOf("rmnet", "ccmni", "pdp", "v4-", "tun", "dummy", "ppp")
+
+        /**
+         * Interface names that are cellular or otherwise not the station LAN.
+         * `tun`/`ppp` are VPNs; a VPN route must not send the station password
+         * to a remote endpoint either.
+         */
+        private val CELLULAR_PREFIXES =
+            listOf("rmnet", "ccmni", "pdp", "v4-", "tun", "dummy", "ppp", "wwan", "radio", "seth")
+
+        fun isCellularInterface(name: String): Boolean =
+            CELLULAR_PREFIXES.any { name.startsWith(it, ignoreCase = true) }
     }
 }
