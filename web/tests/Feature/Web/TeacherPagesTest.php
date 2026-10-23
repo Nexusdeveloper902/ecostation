@@ -105,6 +105,49 @@ class TeacherPagesTest extends TestCase
     }
 
     #[Test]
+    public function the_export_page_offers_the_scoped_range_and_both_formats(): void
+    {
+        $this->depositFor('Maria González', MaterialClass::Plastic, 10);
+
+        $this->actingAs($this->teacher())
+            ->get('/teacher/export')
+            ->assertOk()
+            ->assertViewHas('summary', fn (array $summary) => $summary['items'] === 1)
+            ->assertSee(route('teacher.export.csv'), false)
+            ->assertSee(route('teacher.export.pdf'), false)
+            ->assertSee('5° A', false)
+            ->assertDontSee('5° B', false);
+    }
+
+    #[Test]
+    public function the_export_page_is_forbidden_to_students_and_guests(): void
+    {
+        $this->get('/teacher/export')->assertRedirect('/login');
+
+        $this->actingAs($this->cardOf('Maria González')->student->account)
+            ->get('/teacher/export')
+            ->assertForbidden();
+    }
+
+    #[Test]
+    public function the_export_page_reuses_the_range_parameters_without_changing_the_export_routes(): void
+    {
+        $from = Carbon::today()->subDays(6)->toDateString();
+        $to = Carbon::today()->toDateString();
+
+        $this->actingAs($this->teacher())
+            ->get("/teacher/export?from={$from}&to={$to}")
+            ->assertOk()
+            ->assertViewHas('from', $from)
+            ->assertViewHas('to', $to)
+            ->assertSee('/teacher/export.csv?from='.$from, false);
+
+        $this->actingAs($this->teacher())
+            ->get("/teacher/export.csv?from={$from}&to={$to}")
+            ->assertOk();
+    }
+
+    #[Test]
     public function out_of_scope_students_classes_and_exports_are_404(): void
     {
         $diego = $this->studentId('Diego López');

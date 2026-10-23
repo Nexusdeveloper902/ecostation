@@ -138,6 +138,55 @@ class RecyclingReportServiceTest extends TestCase
     }
 
     #[Test]
+    public function the_weekly_material_trend_zero_fills_every_material_and_week(): void
+    {
+        $this->depositFor('Maria González', MaterialClass::Plastic, 10);
+
+        $today = Carbon::today()->toDateString();
+        $weeks = $this->service()->materialWeeklyTrend($today, $today);
+
+        $this->assertCount(1, $weeks);
+        $this->assertSame(1, $weeks[0]['materials']['plastic']);
+        $this->assertSame(0, $weeks[0]['materials']['metal']);
+        $this->assertSame(0, $weeks[0]['materials']['other']);
+        $this->assertSame(1, $weeks[0]['total']);
+    }
+
+    #[Test]
+    public function the_summary_counts_active_students_points_and_the_previous_period(): void
+    {
+        $this->depositFor('Maria González', MaterialClass::Plastic, 10);
+
+        $today = Carbon::today()->toDateString();
+        $summary = $this->service()->summary($today, $today);
+
+        $this->assertSame(1, $summary['items']);
+        $this->assertSame(10, $summary['points']);
+        $this->assertSame(1, $summary['activeStudents']);
+        $this->assertSame(Student::count(), $summary['totalStudents']);
+        $this->assertSame(100, $summary['recyclablePct']);
+        $this->assertSame(0, $summary['previousItems']);
+        $this->assertNull($summary['deltaPct']);
+        $this->assertSame(2, $summary['averagePoints']);
+    }
+
+    #[Test]
+    public function the_most_active_students_are_ranked_by_points_inside_the_scope(): void
+    {
+        $this->depositFor('Maria González', MaterialClass::Plastic, 10);
+        $this->depositFor('Maria González', MaterialClass::Metal, 15);
+        $this->depositFor('Diego López', MaterialClass::Paper, 5);
+
+        $today = Carbon::today()->toDateString();
+        $rows = $this->service()->topStudents($today, $today, [$this->classId('Maria González')]);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Maria González', $rows[0]['name']);
+        $this->assertSame(2, $rows[0]['items']);
+        $this->assertSame(25, $rows[0]['points']);
+    }
+
+    #[Test]
     public function the_export_rows_carry_the_receipt_fields(): void
     {
         $this->depositFor('Maria González', MaterialClass::Plastic, 10);

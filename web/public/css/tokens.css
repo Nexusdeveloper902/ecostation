@@ -1,0 +1,117 @@
+/*
+ * EcoStation · tokens
+ * Concepto B · Boti. Single source for colour, type, shape and rhythm.
+ * Loaded before base.css / components.css / layout.css.
+ */
+
+:root {
+    /* Brand palette */
+    --eco-primary: #18b26b;
+    --eco-primary-strong: #0b7a47;
+    --eco-primary-deep: #087f47;
+    --eco-primary-soft: #e6f8ee;
+    --eco-secondary: #14b8b0;
+    --eco-secondary-deep: #0d7f7a;
+    --eco-secondary-soft: #e2f5ee;
+    --eco-sun: #ffc93c;
+    --eco-sun-soft: #fff4d6;
+    --eco-coral: #ff7a59;
+    --eco-coral-soft: #fdeae1;
+    --eco-ink: #0f2a2e;
+    --eco-slate: #4a6468;
+    --eco-mist: #dcebe6;
+    --eco-mint: #f2faf6;
+    --eco-white: #ffffff;
+
+    /* Functional */
+    --eco-success-bg: #e6f8ee;
+    --eco-success-text: #0b7a47;
+    --eco-warning-bg: #fdf2d6;
+    --eco-warning-text: #7a4a00;
+    --eco-warning-icon: #f59e0b;
+    --eco-danger-bg: #fdecec;
+    --eco-danger-text: #c2262c;
+    --eco-danger-icon: #c2262c;
+    --eco-info-bg: #e3eefb;
+    --eco-info-text: #1c5ba8;
+
+    /* Material palette (blue / coral / turquoise / amber / pink) */
+    --eco-mat-blue: #2a78d6;
+    --eco-mat-blue-bg: #e3eefb;
+    --eco-mat-coral: #eb6834;
+    --eco-mat-coral-bg: #fdeae1;
+    --eco-mat-turquoise: #14b8b0;
+    --eco-mat-turquoise-bg: #e2f5ee;
+    --eco-mat-amber: #eda100;
+    --eco-mat-amber-bg: #fff4d6;
+    --eco-mat-pink: #e87ba4;
+    --eco-mat-pink-bg: #fceaf1;
+
+    /* Type */
+    --eco-font-display: "Fredoka", "Trebuchet MS", system-ui, sans-serif;
+    --eco-font-body: "Nunito", "Segoe UI", system-ui, sans-serif;
+    --eco-font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+
+    --eco-text-display: clamp(2.5rem, 1.85rem + 2.8vw, 3.5rem);
+    --eco-text-h1: clamp(2rem, 1.6rem + 1.7vw, 3rem);
+    --eco-text-h2: clamp(1.5rem, 1.3rem + 0.7vw, 1.75rem);
+    --eco-text-h3: 1.25rem;
+    --eco-text-body: 1.125rem;
+    --eco-text-sm: 1rem;
+    --eco-text-label: 0.875rem;
+    --eco-text-micro: 0.75rem;
+    --eco-text-figure: clamp(1.75rem, 1.45rem + 1vw, 2rem);
+
+    --eco-line-display: 1.14;
+    --eco-line-h1: 1.16;
+    --eco-line-h2: 1.28;
+    --eco-line-body: 1.55;
+
+    /* Shape */
+    --eco-radius-xs: 4px;
+    --eco-radius-sm: 8px;
+    --eco-radius-md: 12px;
+    --eco-radius-lg: 16px;
+    --eco-radius-xl: 24px;
+    --eco-radius-pill: 999px;
+
+    /* Rhythm */
+    --eco-space-1: 4px;
+    --eco-space-2: 8px;
+    --eco-space-3: 12px;
+    --eco-space-4: 16px;
+    --eco-space-5: 24px;
+    --eco-space-6: 32px;
+    --eco-space-7: 48px;
+    --eco-space-8: 64px;
+
+    /* Elevation */
+    --eco-shadow-card: 0 1px 2px rgba(15, 42, 46, 0.04), 0 8px 24px rgba(15, 42, 46, 0.05);
+    --eco-shadow-raised: 0 2px 4px rgba(15, 42, 46, 0.06), 0 16px 40px rgba(15, 42, 46, 0.09);
+    --eco-shadow-pop: 0 12px 32px rgba(15, 42, 46, 0.16);
+    --eco-shadow-inset: inset 0 0 0 1px var(--eco-mist);
+
+    /* Focus: 2px ring with 2px offset */
+    --eco-focus-color: var(--eco-primary);
+    --eco-focus-ring: 0 0 0 2px var(--eco-white), 0 0 0 4px var(--eco-focus-color);
+
+    /* Shell */
+    --eco-sidebar-width: 264px;
+    --eco-topbar-height: 88px;
+    --eco-bottom-nav-height: 76px;
+    --eco-content-max: 1180px;
+    --eco-page-gutter: clamp(16px, 2.4vw, 32px);
+
+    /* Motion */
+    --eco-duration-fast: 120ms;
+    --eco-duration: 200ms;
+    --eco-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+    /* The product is a light, playful surface: keep it light and opt out
+       of UA dark form controls instead of shipping a second palette. */
+    :root {
+        color-scheme: light;
+    }
+}

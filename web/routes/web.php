@@ -84,6 +84,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/teacher/classes/{class}', [TeacherDashboardController::class, 'showClass'])->name('teacher.class');
         Route::get('/teacher/students/{student}', [TeacherDashboardController::class, 'showStudent'])->name('teacher.student');
         Route::get('/teacher/live', [TeacherDashboardController::class, 'live'])->name('teacher.live');
+        Route::get('/teacher/export', [TeacherExportController::class, 'page'])->name('teacher.export');
 
         Route::get('/teacher/export.csv', [TeacherExportController::class, 'csv'])->name('teacher.export.csv');
         Route::get('/teacher/export.pdf', [TeacherExportController::class, 'pdf'])->name('teacher.export.pdf');

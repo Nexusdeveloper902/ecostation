@@ -95,6 +95,40 @@ class StudentPagesTest extends TestCase
     }
 
     #[Test]
+    public function the_dashboard_exposes_the_year_month_and_material_series(): void
+    {
+        $this->depositFor('Maria González');
+
+        $this->actingAs($this->accountOf('Maria González'))
+            ->get('/student')
+            ->assertOk()
+            ->assertViewHas('yearItems', 1)
+            ->assertViewHas('monthItems', 1)
+            ->assertViewHas('weekPoints', 10)
+            ->assertViewHas('byMaterial', fn (array $mix) => $mix['plastic']['items'] === 1
+                && $mix['plastic']['points'] === 10
+                && $mix['metal']['items'] === 0);
+    }
+
+    #[Test]
+    public function the_history_filters_by_month_and_material_without_leaking_other_rows(): void
+    {
+        $this->depositFor('Maria González', MaterialClass::Plastic, 10);
+
+        $this->actingAs($this->accountOf('Maria González'))
+            ->get('/student/history?material=azul')
+            ->assertOk()
+            ->assertViewHas('deposits', fn ($deposits) => $deposits->total() === 1)
+            ->assertViewHas('selectedMaterial', 'plastic');
+
+        $this->actingAs($this->accountOf('Maria González'))
+            ->get('/student/history?material=coral')
+            ->assertOk()
+            ->assertViewHas('deposits', fn ($deposits) => $deposits->total() === 0)
+            ->assertDontSee('plastic');
+    }
+
+    #[Test]
     public function a_teacher_gets_403_on_every_student_page(): void
     {
         $teacher = $this->teacher();

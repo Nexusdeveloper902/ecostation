@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
+use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Services\Pdf\RecyclingReportPdf;
 use App\Services\RecyclingReportService;
@@ -10,6 +11,7 @@ use App\Services\StudentScope;
 use App\Support\ReportRange;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -26,6 +28,34 @@ class TeacherExportController extends Controller
         private readonly RecyclingReportService $reports,
         private readonly RecyclingReportPdf $pdf,
     ) {}
+
+    /**
+     * The read-only export landing page: scope, range summary and links
+     * to the existing CSV/PDF routes. It never produces a file itself.
+     */
+    public function page(Request $request): View
+    {
+        $scope = StudentScope::forUser($request->user());
+        [$from, $to] = ReportRange::resolve($request);
+
+        $classIds = $scope->classIdFilter();
+
+        $classes = $classIds === null
+            ? SchoolClass::orderBy('name')->get()
+            : SchoolClass::whereIn('id', $classIds)->orderBy('name')->get();
+
+        $query = ['from' => $from, 'to' => $to];
+
+        return view('teacher.export', [
+            'from' => $from,
+            'to' => $to,
+            'classes' => $classes,
+            'summary' => $this->reports->summary($from, $to, $classIds),
+            'byMaterial' => $this->reports->byMaterial($from, $to, $classIds),
+            'csvUrl' => route('teacher.export.csv', $query),
+            'pdfUrl' => route('teacher.export.pdf', $query),
+        ]);
+    }
 
     public function csv(Request $request): StreamedResponse
     {
