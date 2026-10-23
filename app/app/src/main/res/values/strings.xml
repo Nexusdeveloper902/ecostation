@@ -1,4 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">EcoStation</string>
+    <string name="hce_description">Credencial EcoStation</string>
+    <string name="aid_group_description">Credencial EcoStation</string>
+
+    <!-- Cara de la tarjeta -->
+    <string name="card_label">CREDENCIAL</string>
+    <string name="card_holder_hint">Añade tu nombre</string>
+    <string name="card_edit">Editar</string>
+
+    <!-- Estado de la tarjeta. Corto a propósito: se lee de lejos mientras el
+         teléfono se acerca al lector. -->
+    <string name="state_ready">LISTA</string>
+    <string name="state_linked">CONECTADA</string>
+    <string name="state_verified">VERIFICADA</string>
+    <string name="state_nfc_off">NFC APAGADO</string>
+    <string name="state_unsupported">NO COMPATIBLE</string>
+
+    <!-- Guía bajo la tarjeta -->
+    <string name="hint_ready">Apoya el teléfono plano sobre el lector y mantenlo quieto.</string>
+    <string name="hint_linked">Lector conectado. No muevas el teléfono.</string>
+    <string name="hint_verified">Credencial aceptada.</string>
+    <string name="hint_nfc_off">Activa el NFC en Ajustes y vuelve aquí.</string>
+    <string name="hint_unsupported">Este teléfono no tiene emulación de tarjeta, así que no puede funcionar como credencial.</string>
+
+    <!-- Diálogo del nombre -->
+    <string name="name_title">Tu nombre</string>
+    <string name="name_body">Aparece en tu tarjeta. Es una etiqueta solo para ti: nunca se envía al lector ni sale de este teléfono.</string>
+    <string name="name_hint">Nombre completo</string>
+    <string name="name_save">Guardar</string>
+    <string name="name_cancel">Cancelar</string>
+
+    <!-- Diagnóstico (para el banco de pruebas) -->
+    <string name="diag_title">Diagnóstico</string>
+    <string name="diag_hce">Emulación de tarjeta</string>
+    <string name="diag_routing">Enrutado del AID</string>
+    <string name="diag_events">Intercambio con el lector</string>
+    <string name="diag_empty">Todavía no hay actividad del lector</string>
+    <string name="diag_credential">Identificador de esta credencial</string>
+    <string name="diag_feed">Eventos del backend (sonido)</string>
+    <string name="diag_feed_body">%1$s\nÚltimo pitido: %2$s</string>
+    <string name="diag_audio">Salida de audio</string>
+    <string name="diag_audio_body">%1$s\nToca aquí para probar los tres pitidos.</string>
+
+    <!-- Vinculación: la llave propia de esta credencial -->
+    <string name="link_phone">Vincular este teléfono</string>
+    <string name="link_title">Vincular con EcoStation</string>
+    <string name="link_body">Hazlo en la mesa de emparejamiento: pide que armen tu nombre y que pongan el lector en modo EMPAREJAR. Luego acerca el teléfono al lector antes de un minuto.\n\nSe crea una llave nueva, solo para este teléfono, guardada en su almacén seguro. Si el teléfono ya estaba vinculado, deja de funcionar hasta que termines este paso.</string>
+    <string name="link_start">Empezar</string>
+    <string name="link_failed">Este teléfono no pudo crear su llave segura. Inténtalo de nuevo; si sigue fallando, este teléfono no puede ser credencial.</string>
+    <string name="state_linking">VINCULANDO %1$d:%2$02d</string>
+    <string name="state_link_sent">LLAVE ENVIADA</string>
+    <string name="state_unlinked">SIN VINCULAR</string>
+    <string name="hint_linking">Acerca el teléfono al lector en modo EMPAREJAR (%1$d s).</string>
+    <string name="hint_link_sent">El lector recibió la llave. Confirma en la mesa que quedó emparejado.</string>
+    <string name="hint_unlinked">Este teléfono aún no tiene llave. En la mesa de emparejamiento toca «Vincular este teléfono».</string>
+    <string name="diag_key">Llave de la credencial</string>
+    <string name="diag_key_present">en el Android Keystore (no exportable)</string>
+    <string name="diag_key_missing">falta — vincula este teléfono en la mesa</string>
 </resources>
