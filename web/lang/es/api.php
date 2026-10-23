@@ -31,6 +31,9 @@ return [
     'password_change_required' => 'Debes definir una nueva contraseña antes de continuar.',
     'forbidden_role' => 'No tienes permiso para realizar esta acción.',
 
+    // API del estudiante (app Android)
+    'student_not_linked' => 'Esta cuenta no está vinculada a un estudiante.',
+
     // Endpoint de emparejamiento de tarjetas
     'pairing_no_active_session' => 'No hay ninguna sesión de emparejamiento activa',
     'pairing_card_already_paired' => 'La tarjeta ya está emparejada',
