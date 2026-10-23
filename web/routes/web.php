@@ -5,6 +5,7 @@ use App\Http\Controllers\Web\DepositPhotoController;
 use App\Http\Controllers\Web\ManifestController;
 use App\Http\Controllers\Web\PasswordController;
 use App\Http\Controllers\Web\RealtimeTokenController;
+use App\Http\Controllers\Web\StudentController;
 use App\Support\HomeTarget;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -60,4 +61,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/realtime/token', [RealtimeTokenController::class, 'issue'])
         ->middleware('role:admin,teacher,station')
         ->name('realtime.token');
+
+    // Student self-service: own balance, own deposits, shared board.
+    Route::middleware('role:student')->group(function () {
+        Route::get('/student', [StudentController::class, 'dashboard'])->name('student.dashboard');
+        Route::get('/student/history', [StudentController::class, 'history'])->name('student.history');
+        Route::get('/student/leaderboard', [StudentController::class, 'leaderboard'])->name('student.leaderboard');
+    });
 });
