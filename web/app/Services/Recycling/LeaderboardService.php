@@ -36,7 +36,7 @@ class LeaderboardService
      * `points_ledger` — la suma propia y cuántos estudiantes tienen una
      * suma estrictamente mayor (los empates comparten el mejor puesto).
      *
-     * @return array{rank: int|null, points: int}
+     * @return array{rank: int, points: int}
      */
     public function rankOf(Student $student): array
     {
