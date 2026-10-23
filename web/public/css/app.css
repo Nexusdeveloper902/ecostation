@@ -1,0 +1,9 @@
+/*
+ * EcoStation · app
+ * Convenience entrypoint. The layouts link the four files directly so
+ * the browser does not pay for a serial @import chain.
+ */
+@import url("tokens.css");
+@import url("base.css");
+@import url("components.css");
+@import url("layout.css");

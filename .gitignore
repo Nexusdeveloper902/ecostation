@@ -1,2 +1,8 @@
 .superpowers/
 .worktrees/
+web/.env
+web/database/*.sqlite
+web/storage/app/private/*
+**/secrets*.h
+*.jks
+*.keystore

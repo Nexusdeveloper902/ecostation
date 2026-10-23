@@ -1,0 +1,352 @@
+<?php
+
+namespace App\Services;
+
+use App\Enums\MaterialClass;
+use App\Models\SchoolClass;
+use App\Models\Student;
+use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * The recycling reporting data layer: per-day trend, material mix,
+ * class totals and per-student histories. ONE truth behind /teacher,
+ * its CSV/PDF exports and the student breakdown, so an export can never
+ * disagree with the screen.
+ *
+ * Everything derives from classified deposits (never raw taps): an
+ * unclassified tap has awarded no points and moved no material total.
+ * Every method takes `$classIds`; null means the whole school, an array
+ * means that teacher's classes (an empty array matches nothing, which
+ * is how the scope fails closed).
+ */
+class RecyclingReportService
+{
+    /**
+     * Per-day items + points over an inclusive range (zero-filled).
+     *
+     * @param  array<int, int>|null  $classIds
+     * @return array<int, array{date: string, items: int, points: int}>
+     */
+    public function trend(string $from, string $to, ?array $classIds = null): array
+    {
+        $rows = $this->depositsQuery($from, $to, $classIds)
+            ->selectRaw('date(e.occurred_at) as day, count(*) as items, coalesce(sum(d.points_awarded), 0) as points')
+            ->groupByRaw('date(e.occurred_at)')
+            ->get();
+
+        $byDay = [];
+        foreach ($rows as $row) {
+            $byDay[$row->day] = ['items' => (int) $row->items, 'points' => (int) $row->points];
+        }
+
+        $trend = [];
+        $cursor = Carbon::parse($from)->startOfDay();
+        $end = Carbon::parse($to)->startOfDay();
+        while ($cursor->lte($end)) {
+            $day = $cursor->toDateString();
+            $trend[] = [
+                'date' => $day,
+                'items' => $byDay[$day]['items'] ?? 0,
+                'points' => $byDay[$day]['points'] ?? 0,
+            ];
+            $cursor->addDay();
+        }
+
+        return $trend;
+    }
+
+    /**
+     * The material mix over an inclusive range: every material appears,
+     * even at zero. `rate` is the LIVE admin rate, not a config snapshot.
+     *
+     * @param  array<int, int>|null  $classIds
+     * @return array<string, array{items: int, points: int, rate: int}>
+     */
+    public function byMaterial(string $from, string $to, ?array $classIds = null): array
+    {
+        $mix = [];
+        foreach (MaterialClass::cases() as $material) {
+            $mix[$material->value] = ['items' => 0, 'points' => 0, 'rate' => $material->points()];
+        }
+
+        $rows = $this->depositsQuery($from, $to, $classIds)
+            ->selectRaw('d.material_class as material_class, count(*) as items, coalesce(sum(d.points_awarded), 0) as points')
+            ->groupBy('d.material_class')
+            ->get();
+
+        foreach ($rows as $row) {
+            $key = (string) $row->material_class;
+            $material = MaterialClass::tryFrom($key);
+
+            $mix[$key] = [
+                'items' => (int) $row->items,
+                'points' => (int) $row->points,
+                'rate' => $material?->points() ?? 0,
+            ];
+        }
+
+        return $mix;
+    }
+
+    /**
+     * Items + points per class. Every class in scope is listed, including
+     * quiet ones, so the dashboard table is an honest comparison.
+     *
+     * @param  array<int, int>|null  $classIds
+     * @return array<int, array{class_id: int, class_name: string, items: int, points: int}>
+     */
+    public function byClass(string $from, string $to, ?array $classIds = null): array
+    {
+        $classes = SchoolClass::query()
+            ->when($classIds !== null, fn ($query) => $query->whereIn('id', $classIds))
+            ->orderBy('name')
+            ->pluck('name', 'id');
+
+        $rows = $this->depositsQuery($from, $to, $classIds)
+            ->whereNotNull('cl.id')
+            ->selectRaw('cl.id as class_id, count(*) as items, coalesce(sum(d.points_awarded), 0) as points')
+            ->groupBy('cl.id', 'cl.name')
+            ->get()
+            ->keyBy('class_id');
+
+        $result = [];
+        foreach ($classes as $id => $name) {
+            $row = $rows->get($id);
+            $result[] = [
+                'class_id' => (int) $id,
+                'class_name' => (string) $name,
+                'items' => $row !== null ? (int) $row->items : 0,
+                'points' => $row !== null ? (int) $row->points : 0,
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * One student's recycling history: per-deposit rows (material, points,
+     * reader, time, whether a photo survives), newest first, plus totals.
+     *
+     * @return array{student: array{id: int, name: string, class_name: ?string}, deposits: array<int, array{deposit_id: int, date: string, time: string, class_name: ?string, material: string, points: int, is_bottle: bool, is_recyclable: bool, has_photo: bool, reader: ?string}>, totals: array{items: int, points: int}}
+     */
+    public function studentHistory(Student $student, int $days = 30): array
+    {
+        $days = max(1, min(365, $days));
+        $from = Carbon::today()->subDays($days - 1)->startOfDay();
+
+        $rows = DB::table('recycling_deposits as d')
+            ->join('events as e', 'e.id', '=', 'd.event_id')
+            ->join('cards as c', 'c.id', '=', 'e.card_id')
+            ->leftJoin('classes as cl', 'cl.id', '=', 'e.class_id')
+            ->leftJoin('readers as r', 'r.id', '=', 'e.reader_id')
+            ->where('c.student_id', $student->id)
+            ->where('e.occurred_at', '>=', $from)
+            ->orderByDesc('e.occurred_at')
+            ->orderByDesc('d.id')
+            ->get([
+                'd.id as deposit_id',
+                'd.material_class',
+                'd.points_awarded',
+                'd.is_bottle',
+                'd.is_recyclable',
+                'd.image_path',
+                'e.occurred_at',
+                'cl.name as class_name',
+                'r.label as reader_label',
+            ]);
+
+        $deposits = $rows->map(fn ($row) => [
+            'deposit_id' => (int) $row->deposit_id,
+            'date' => Carbon::parse($row->occurred_at)->toDateString(),
+            'time' => Carbon::parse($row->occurred_at)->format('H:i'),
+            // Class SNAPSHOT of the tap, for historical exports.
+            'class_name' => $row->class_name !== null ? (string) $row->class_name : null,
+            'material' => (string) $row->material_class,
+            'points' => (int) $row->points_awarded,
+            'is_bottle' => (bool) $row->is_bottle,
+            'is_recyclable' => (bool) $row->is_recyclable,
+            'has_photo' => $row->image_path !== null,
+            'reader' => $row->reader_label !== null ? (string) $row->reader_label : null,
+        ])->all();
+
+        return [
+            'student' => [
+                'id' => (int) $student->id,
+                'name' => (string) $student->name,
+                'class_name' => $student->schoolClass?->name,
+            ],
+            'deposits' => $deposits,
+            'totals' => [
+                'items' => count($deposits),
+                'points' => array_sum(array_column($deposits, 'points')),
+            ],
+        ];
+    }
+
+    /**
+     * Flat deposit rows for the CSV exports, newest first.
+     *
+     * @param  array<int, int>|null  $classIds
+     * @return array<int, array{date: string, time: string, student: string, class: ?string, material: string, points: int, is_recyclable: bool}>
+     */
+    public function deposits(string $from, string $to, ?array $classIds = null): array
+    {
+        return $this->depositsQuery($from, $to, $classIds)
+            ->orderByDesc('e.occurred_at')
+            ->orderByDesc('d.id')
+            ->get([
+                'd.material_class',
+                'd.points_awarded',
+                'd.is_recyclable',
+                'e.occurred_at',
+                's.name as student_name',
+                'cl.name as class_name',
+            ])
+            ->map(fn ($row) => [
+                'date' => Carbon::parse($row->occurred_at)->toDateString(),
+                'time' => Carbon::parse($row->occurred_at)->format('H:i'),
+                'student' => (string) $row->student_name,
+                'class' => $row->class_name !== null ? (string) $row->class_name : null,
+                'material' => (string) $row->material_class,
+                'points' => (int) $row->points_awarded,
+                'is_recyclable' => (bool) $row->is_recyclable,
+            ])
+            ->all();
+    }
+
+    /**
+     * Items per material, week by week, zero-filled for every week and
+     * every material. The teacher chart renders this series directly.
+     *
+     * @param  array<int, int>|null  $classIds
+     * @return array<int, array{start: string, label: string, materials: array<string, int>, total: int}>
+     */
+    public function materialWeeklyTrend(string $from, string $to, ?array $classIds = null): array
+    {
+        $fromDay = Carbon::parse($from)->startOfDay();
+        $toDay = Carbon::parse($to)->startOfDay();
+
+        $rows = $this->depositsQuery($from, $to, $classIds)
+            ->select(DB::raw('date(e.occurred_at) as day'))
+            ->selectRaw('d.material_class as material, count(*) as items')
+            ->groupByRaw('date(e.occurred_at), d.material_class')
+            ->get();
+
+        $byWeek = [];
+        foreach ($rows as $row) {
+            $week = Carbon::parse($row->day)->startOfWeek(Carbon::MONDAY)->toDateString();
+            $material = (string) $row->material;
+            $byWeek[$week][$material] = ($byWeek[$week][$material] ?? 0) + (int) $row->items;
+        }
+
+        $materials = array_map(fn (MaterialClass $material) => $material->value, MaterialClass::cases());
+        $weeks = [];
+        $cursor = $fromDay->copy()->startOfWeek(Carbon::MONDAY);
+
+        while ($cursor->lte($toDay)) {
+            $key = $cursor->toDateString();
+            $series = array_fill_keys($materials, 0);
+
+            foreach ($materials as $material) {
+                $series[$material] = (int) ($byWeek[$key][$material] ?? 0);
+            }
+
+            $weeks[] = [
+                'start' => $key,
+                'label' => $cursor->copy()->locale('es')->translatedFormat('j M'),
+                'materials' => $series,
+                'total' => array_sum($series),
+            ];
+
+            $cursor->addWeek();
+        }
+
+        return $weeks;
+    }
+
+    /**
+     * The KPI block behind the teacher dashboard: totals, active
+     * students, recyclable share and the previous-period delta.
+     *
+     * @param  array<int, int>|null  $classIds
+     * @return array{items: int, points: int, activeStudents: int, totalStudents: int, recyclablePct: int, previousItems: int, deltaPct: int|null, averagePoints: int}
+     */
+    public function summary(string $from, string $to, ?array $classIds = null): array
+    {
+        $base = $this->depositsQuery($from, $to, $classIds);
+
+        $items = (clone $base)->count();
+        $points = (int) (clone $base)->sum('d.points_awarded');
+        $recyclable = (clone $base)->where('d.is_recyclable', true)->count();
+        $active = (clone $base)->select('s.id')->distinct()->get()->count();
+
+        $totalStudents = Student::query()
+            ->when($classIds !== null, fn ($query) => $query->whereIn('class_id', $classIds))
+            ->count();
+
+        $days = Carbon::parse($from)->diffInDays(Carbon::parse($to)) + 1;
+        $previousTo = Carbon::parse($from)->subDay();
+        $previousFrom = $previousTo->copy()->subDays($days - 1);
+        $previousItems = $this->depositsQuery($previousFrom->toDateString(), $previousTo->toDateString(), $classIds)->count();
+
+        return [
+            'items' => $items,
+            'points' => $points,
+            'activeStudents' => $active,
+            'totalStudents' => $totalStudents,
+            'recyclablePct' => $items > 0 ? (int) round($recyclable / $items * 100) : 0,
+            'previousItems' => $previousItems,
+            'deltaPct' => $previousItems > 0 ? (int) round(($items - $previousItems) / $previousItems * 100) : null,
+            'averagePoints' => $totalStudents > 0 ? (int) round($points / $totalStudents) : 0,
+        ];
+    }
+
+    /**
+     * The most active students in the range, by awarded points. Used by
+     * the "Estudiantes más activos" card; never invents a favourite
+     * material the data does not know.
+     *
+     * @param  array<int, int>|null  $classIds
+     * @return array<int, array{student_id: int, name: string, class_name: string|null, items: int, points: int}>
+     */
+    public function topStudents(string $from, string $to, ?array $classIds = null, int $limit = 5): array
+    {
+        return $this->depositsQuery($from, $to, $classIds)
+            ->select('s.id as student_id')
+            ->selectRaw('s.name as name, cl.name as class_name, count(*) as items, coalesce(sum(d.points_awarded), 0) as points')
+            ->groupBy('s.id', 's.name', 'cl.name')
+            ->orderByDesc(DB::raw('coalesce(sum(d.points_awarded), 0)'))
+            ->orderBy('s.name')
+            ->limit(max(1, $limit))
+            ->get()
+            ->map(fn ($row) => [
+                'student_id' => (int) $row->student_id,
+                'name' => (string) $row->name,
+                'class_name' => $row->class_name !== null ? (string) $row->class_name : null,
+                'items' => (int) $row->items,
+                'points' => (int) $row->points,
+            ])
+            ->all();
+    }
+
+    /** @param  array<int, int>|null  $classIds */
+    private function depositsQuery(string $from, string $to, ?array $classIds): Builder
+    {
+        return DB::table('recycling_deposits as d')
+            ->join('events as e', 'e.id', '=', 'd.event_id')
+            ->join('cards as c', 'c.id', '=', 'e.card_id')
+            ->join('students as s', 's.id', '=', 'c.student_id')
+            // Historical artifacts follow the class at tap time, not the
+            // student's current enrolment: reports and exports stay
+            // attached to the class that actually produced them.
+            ->leftJoin('classes as cl', 'cl.id', '=', 'e.class_id')
+            ->leftJoin('readers as r', 'r.id', '=', 'e.reader_id')
+            ->whereBetween('e.occurred_at', [
+                Carbon::parse($from)->startOfDay(),
+                Carbon::parse($to)->endOfDay(),
+            ])
+            ->when($classIds !== null, fn ($query) => $query->whereIn('e.class_id', $classIds));
+    }
+}

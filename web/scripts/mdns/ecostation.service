@@ -1,0 +1,27 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<!--
+  ecostation.service — anuncio estático de avahi para EcoStation.
+  Publica el MISMO contrato que `./run serve` anuncia en caliente:
+    servicio _ecostation._tcp.local, TXT version=1 protocol=1 api=/api.
+
+  Instalación (máquina fija, solo el puerto web):
+    sudo cp scripts/mdns/ecostation.service /etc/avahi/services/
+    # ajusta <port> si `php artisan serve` no usa 8000
+    # y reinicia avahi-daemon.
+
+  Prefiere `./run serve` (dinámico, sigue el puerto y muere con Ctrl+C);
+  este archivo es el respaldo para máquinas donde no se puede ejecutar
+  avahi-publish-service. El puerto WebSocket no se anuncia: /realtime/token
+  lo entrega como ws://<host>:8081/app.
+-->
+<service-group>
+  <name replace-wildcards="yes">EcoStation en %h</name>
+  <service>
+    <type>_ecostation._tcp</type>
+    <port>8000</port>
+    <txt-record>version=1</txt-record>
+    <txt-record>protocol=1</txt-record>
+    <txt-record>api=/api</txt-record>
+  </service>
+</service-group>
