@@ -19,7 +19,7 @@ case "${1:-}" in
     setup)
         composer install
         cp -n .env.example .env
-        php artisan key:generate
+        grep -q '^APP_KEY=.\+' .env || php artisan key:generate # no regenerar: las claves HCE se cifran con APP_KEY
         touch database/database.sqlite
         php artisan migrate --seed --force
         echo

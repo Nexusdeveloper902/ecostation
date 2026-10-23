@@ -15,7 +15,11 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Solo desarrollo: credenciales de demostración (se imprimen en `./run setup`).
+        // Solo desarrollo: nunca sembrar la cuenta demo fuera de local/testing.
+        if (! app()->environment('local', 'testing')) {
+            return;
+        }
+
         User::factory()->create([
             'name' => 'Demo',
             'email' => 'demo@ecostation.test',
