@@ -18,6 +18,7 @@ void runDebounceTests();
 void runConsoleTests();
 void runCaptureTriggerTests();
 void runEndpointTests();
+void runStationFlowTests();
 
 // Compartido por todas las pruebas (Unity llama estas funciones en cada RUN_TEST).
 void setUp() {}
@@ -37,6 +38,7 @@ int main() {
     runConsoleTests();         // consola serial (LineBuffer + ModeConsole)
     runCaptureTriggerTests();  // disparador de captura (disciplina de línea + enfriamiento)
     runEndpointTests();        // dirección del servidor (mDNS + manual)
+    runStationFlowTests();     // máquina de estados de la transacción
 
     return UNITY_END();
 }
