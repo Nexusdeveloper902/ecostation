@@ -30,6 +30,13 @@
             android:layout_marginTop="24dp"
             android:text="@string/link_phone" />
 
+        <Button
+            android:id="@+id/settingsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/settings_open" />
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -43,6 +50,26 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:fontFamily="monospace"
+            android:textIsSelectable="true"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/feedView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:fontFamily="monospace"
+            android:textIsSelectable="true"
+            android:textSize="12sp" />
+
+        <!-- Tocar esta línea reproduce los cinco sonidos. -->
+        <TextView
+            android:id="@+id/audioView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:fontFamily="monospace"
+            android:padding="8dp"
             android:textIsSelectable="true"
             android:textSize="12sp" />
     </LinearLayout>

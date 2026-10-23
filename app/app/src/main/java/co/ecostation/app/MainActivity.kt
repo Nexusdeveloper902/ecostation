@@ -3,19 +3,29 @@ package co.ecostation.app
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.ComponentName
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.nfc.NfcAdapter
 import android.nfc.cardemulation.CardEmulation
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.WindowManager
 import android.widget.TextView
 import co.ecostation.app.hce.ApduProtocol
 import co.ecostation.app.hce.CredentialId
 import co.ecostation.app.hce.CredentialRuntime
 import co.ecostation.app.hce.EcoHostApduService
 import co.ecostation.app.hce.HceEvents
+import co.ecostation.app.speaker.FeedbackBridge
+import co.ecostation.app.speaker.FeedbackCue
+import co.ecostation.app.speaker.FeedbackSounds
+import co.ecostation.app.store.AppSettings
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Plain credential screen: state, the "link this phone" button, diagnostics.
@@ -26,6 +36,16 @@ class MainActivity : Activity() {
     private lateinit var stateView: TextView
     private lateinit var hintView: TextView
     private lateinit var diagView: TextView
+    private lateinit var feedView: TextView
+    private lateinit var audioView: TextView
+
+    private lateinit var settings: AppSettings
+
+    /** Sonido local (HCE) y del backend en tiempo real. */
+    private lateinit var sounds: FeedbackSounds
+    private lateinit var bridge: FeedbackBridge
+    @Volatile private var feedStatus = ""
+    private var lastCue = "—"
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -39,6 +59,8 @@ class MainActivity : Activity() {
 
     private val listener: (String) -> Unit = { event ->
         runOnUiThread {
+            // El pitido local suena siempre, con o sin modo parlante.
+            FeedbackCue.fromHceEvent(event)?.let(::cue)
             if (event.startsWith(AUTH_EVENT)) {
                 verifiedAtMs = SystemClock.elapsedRealtime()
                 handler.removeCallbacks(refresh)
@@ -65,7 +87,54 @@ class MainActivity : Activity() {
         stateView = findViewById(R.id.stateView)
         hintView = findViewById(R.id.hintView)
         diagView = findViewById(R.id.diagView)
+        feedView = findViewById(R.id.feedView)
+        audioView = findViewById(R.id.audioView)
         findViewById<TextView>(R.id.linkPhone).setOnClickListener { askToLink() }
+        findViewById<TextView>(R.id.settingsButton).setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+
+        settings = AppSettings(this)
+        sounds = FeedbackSounds(this)
+        bridge = FeedbackBridge(
+            this,
+            settings,
+            onCue = { cue -> runOnUiThread { cue(cue) } },
+            onStatus = { text ->
+                feedStatus = text
+                runOnUiThread { renderDiagnostics() }
+            },
+        )
+        // Prueba de banco: tocar la línea de audio reproduce los cinco sonidos.
+        audioView.setOnClickListener { playTestSequence() }
+    }
+
+    /**
+     * El modo parlante solo vive mientras esta pantalla está visible: mantiene
+     * la pantalla encendida y el volumen físico sobre el flujo multimedia, y
+     * arranca el puente. Sin modo parlante no hay tráfico de red ni keep-alive.
+     */
+    override fun onStart() {
+        super.onStart()
+        if (settings.speakerEnabled) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            volumeControlStream = AudioManager.STREAM_MUSIC
+            sounds.startKeepAlive()
+            bridge.start()
+        }
+    }
+
+    override fun onStop() {
+        bridge.stop()
+        sounds.stopKeepAlive()
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        volumeControlStream = AudioManager.USE_DEFAULT_STREAM_TYPE
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        sounds.release()
+        super.onDestroy()
     }
 
     override fun onResume() {
@@ -172,6 +241,26 @@ class MainActivity : Activity() {
             getString(R.string.diag_key) to getString(if (hasKey()) R.string.diag_key_present else R.string.diag_key_missing),
             getString(R.string.diag_events) to events,
         ).joinToString("\n\n") { (title, body) -> "$title\n$body" }
+        feedView.text = getString(R.string.diag_feed) + "\n" +
+            getString(R.string.diag_feed_body, feedStatus.ifEmpty { "—" }, lastCue)
+        audioView.text = getString(R.string.diag_audio) + "\n" +
+            getString(R.string.diag_audio_body, sounds.outputDescription())
+    }
+
+    // ---------------------------------------------------------------- sonido
+
+    private fun cue(cue: FeedbackCue) {
+        sounds.play(cue)
+        val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
+        lastCue = "${cue.name.lowercase(Locale.ROOT)} @ $time"
+        renderDiagnostics()
+    }
+
+    /** "Toca aquí para probar los cinco sonidos": uno cada 700 ms. */
+    private fun playTestSequence() {
+        FeedbackCue.entries.forEachIndexed { index, cue ->
+            handler.postDelayed({ cue(cue) }, index * 700L)
+        }
     }
 
     private fun hceReport(): String {
