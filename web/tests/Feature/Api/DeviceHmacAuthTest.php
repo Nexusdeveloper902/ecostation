@@ -2,9 +2,12 @@
 
 namespace Tests\Feature\Api;
 
+use App\Contracts\MaterialClassifier;
 use App\Models\PresenceEvent;
 use App\Services\DeviceAuth\DeviceRequestSigner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
@@ -259,13 +262,70 @@ class DeviceHmacAuthTest extends TestCase
     #[Test]
     public function a_signed_device_classifies_with_the_multipart_canonical(): void
     {
-        $this->markTestSkipped('Task 9/10');
+        Storage::fake('local');
+        $this->swap(MaterialClassifier::class, new class implements MaterialClassifier
+        {
+            public function classify(string $imagePath): array
+            {
+                return ['material_class' => 'plastic', 'confidence' => 0.87];
+            }
+        });
+
+        $event = $this->recyclingTapFor('Maria González');
+        $reader = $this->reader();
+        $file = UploadedFile::fake()->image('bottle.jpg');
+        $hash = hash_file('sha256', $file->getPathname());
+        $canonical = DeviceRequestSigner::multipartCanonical((string) $event->id, $hash);
+        $nonce = Str::random(32);
+
+        $response = $this->call(
+            'POST',
+            '/api/v1/recycling/classify',
+            ['event_id' => $event->id],
+            [],
+            ['image' => $file],
+            [
+                'HTTP_ACCEPT' => 'application/json',
+                'HTTP_AUTHORIZATION' => DeviceRequestSigner::authorizationHeader($reader, 'POST', '/api/v1/recycling/classify', $canonical, $nonce),
+            ]
+        );
+
+        $response->assertOk()->assertJson(['status' => 'ok', 'material_class' => 'plastic']);
+        $this->assertDatabaseHas('recycling_deposits', ['event_id' => $event->id]);
     }
 
     #[Test]
     public function a_swapped_image_invalidates_the_multipart_signature(): void
     {
-        $this->markTestSkipped('Task 9/10');
+        Storage::fake('local');
+        $this->swap(MaterialClassifier::class, new class implements MaterialClassifier
+        {
+            public function classify(string $imagePath): array
+            {
+                return ['material_class' => 'plastic', 'confidence' => 0.9];
+            }
+        });
+
+        $event = $this->recyclingTapFor('Maria González');
+        $reader = $this->reader();
+        $signedFile = UploadedFile::fake()->image('signed.jpg');
+        $hash = hash_file('sha256', $signedFile->getPathname());
+        $canonical = DeviceRequestSigner::multipartCanonical((string) $event->id, $hash);
+        $nonce = Str::random(32);
+        $header = DeviceRequestSigner::authorizationHeader($reader, 'POST', '/api/v1/recycling/classify', $canonical, $nonce);
+
+        // Same header, DIFFERENT image bytes: body-bound, must fail closed.
+        $otherFile = UploadedFile::fake()->image('other.jpg', 800, 600);
+        $this->call(
+            'POST',
+            '/api/v1/recycling/classify',
+            ['event_id' => $event->id],
+            [],
+            ['image' => $otherFile],
+            ['HTTP_ACCEPT' => 'application/json', 'HTTP_AUTHORIZATION' => $header]
+        )->assertUnauthorized()->assertJson(['status' => 'error', 'message' => 'Firma de dispositivo no válida']);
+
+        $this->assertDatabaseCount('recycling_deposits', 0);
     }
 
     #[Test]
