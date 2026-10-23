@@ -11,7 +11,8 @@
 cd app
 ./gradlew :app:assembleDebug        # APK de depuración
 ./gradlew :app:testDebugUnitTest    # pruebas unitarias (JVM pura)
-./gradlew :app:assembleRelease      # requiere la llave de firma (ver abajo)
+./gradlew :app:assembleRelease      # APK de release firmado (ver abajo)
+./gradlew :app:bundleRelease        # AAB de release firmado (misma llave)
 ```
 
 ## Interfaz
@@ -60,6 +61,17 @@ el material/estación/puntos de cada señal del parlante y el delta semanal
 `+85 esta semana` (la API solo devuelve saldo y puesto). El nombre/curso sí se
 muestran en **Mis puntos**, donde llegan en `balance.student`.
 
+### Vinculación segura
+
+«Vincular este teléfono» genera una llave nueva y la deja en la ventana de 60 s,
+pero **no reemplaza la llave activa**. La credencial anterior sigue respondiendo
+a los lectores; la nueva se importa al Keystore solo cuando el lector de la mesa
+confirma el `ENROLL` (`adopt`). Si la ventana expira, se cancela o el lector
+nunca contesta, el teléfono sigue sirviendo con la llave vieja. El estado de la
+tarjeta muestra `LLAVE ENVIADA` (bandera `linkPending`) hasta el primer
+`CHALLENGE` respondido con `9000`; a partir de ahí vuelve a `LISTA`/`VERIFICADA`.
+Cancelar cierra la ventana sin tocar el Keystore.
+
 ### Tipografías, iconos y marca
 
 - Fuentes: `res/font/` (Fredoka 500/600, Nunito 400/700/800, JetBrains Mono
@@ -100,13 +112,37 @@ o como variables de entorno: `ECOSTATION_SIGNING_STORE_FILE`,
 `ECOSTATION_SIGNING_STORE_PASSWORD`, `ECOSTATION_SIGNING_KEY_ALIAS`,
 `ECOSTATION_SIGNING_KEY_PASSWORD`.
 
-Si falta alguna, o si el keystore está dentro del monorepo, `assembleRelease`
-falla con «Falta la llave de firma de release». Las compilaciones de depuración
-no se ven afectadas.
+Si falta alguna, o si el keystore está dentro del monorepo, **tanto
+`assembleRelease` como `bundleRelease`** fallan con «Falta la llave de firma de
+release» (la guarda vive en `preReleaseBuild`, que comparten el grafo del APK y
+el del AAB). Las compilaciones de depuración no se ven afectadas.
 
 **Advertencia:** perder o cambiar la llave cambia el identificador de
 credencial de todos los teléfonos (el ANDROID_ID depende de la llave de firma)
 y obliga a volver a emparejarlos.
+
+## Seguridad de red
+
+El backend del colegio es HTTP en la LAN, así que el manifiesto mantiene
+`usesCleartextTraffic="true"`. Para que eso no se convierta en «cualquier host
+recibe la contraseña», la política vive en el código:
+
+- `EcoEndpoint.parseManual` y la selección mDNS/sondeo aceptan únicamente IPv4
+  privadas (`10/8`, `172.16/12`, `192.168/16`, `169.254/16`) o nombres
+  `*.local` / `*.lan`. Hosts públicos, `0.0.0.0`, loopback, IPv6 y `https://`
+  se descartan.
+- Los cuerpos de manifest/login están acotados a 64 KB y los JSON a 1 MB; al
+  pasarse, la operación falla con un mensaje en español en vez de crecer sin
+  límite.
+- El descubrimiento solo acepta un manifiesto que declare `"name":"EcoStation"`
+  y `"start_url"`, y fija la dirección tras el primer token de feed.
+
+**Riesgo residual de primer contacto.** mDNS y el sondeo no autentican
+criptográficamente al servidor: en la primera conexión (o tras borrar la
+dirección fijada), un host de la misma LAN que imite el manifiesto podría
+recibir la contraseña de la estación. En v1 se mitiga fijando la dirección
+después del primer uso y verificando el despliegue en la mesa; la solución
+completa es HTTPS con un certificado del colegio, que la app aún no soporta.
 
 ## Modo parlante
 
@@ -121,12 +157,21 @@ En **Ajustes** se configuran dos bloques:
 - **Servidor.** La dirección manual es opcional. Con «Buscar automáticamente»
   encendido (o la dirección vacía), la app busca el servicio
   `_ecostation._tcp` en la red y, si no aparece, sondea las subredes privadas
-  de tamaño /22 o menor. Una dirección escrita a mano
-  (`192.168.1.10`, `192.168.1.10:8080` o `http://servidor.local:8000/`) gana
-  siempre y se salta el descubrimiento. Un valor inválido se rechaza al
+  de tamaño /22 o menor (nunca interfaces celulares, VPN o de radio). Una
+  dirección escrita a mano (`192.168.1.10`, `192.168.1.10:8080` o
+  `http://servidor.local:8000/`) gana siempre y se salta el descubrimiento.
+  Solo se aceptan direcciones LAN: IPv4 privadas (`10/8`, `172.16/12`,
+  `192.168/16`, `169.254/16`) o nombres `*.local` / `*.lan`. Se rechazan
+  hosts públicos, `0.0.0.0`, loopback, IPv6 y `https://` (la app solo habla
+  HTTP en la LAN; el WebSocket no tiene TLS). Un valor inválido se rechaza al
   guardar con «Dirección no válida». **Probar conexión** consulta
   `/manifest.webmanifest` con timeouts cortos y muestra el punto de estado y la
-  latencia medida, sin bloquear la interfaz.
+  latencia medida, sin bloquear la interfaz; el manifiesto debe declarar
+  `"name":"EcoStation"` y `"start_url"`.
+- **Fijado del servidor.** Tras el primer `GET /realtime/token` exitoso, la
+  dirección usada se guarda como dirección manual. A partir de ahí un anuncio
+  mDNS o un sondeo no puede desviar la contraseña de la estación a otro host.
+  Activar «Buscar automáticamente» y guardar borra esa dirección fijada.
 - **Cuenta del parlante.** Correo y contraseña. La cuenta debe tener rol
   `station` en la web y no puede tener cambio de contraseña pendiente; de lo
   contrario el servidor no entrega el token del feed. La contraseña se guarda
@@ -146,7 +191,10 @@ mueven el flujo multimedia (no el del timbre). Los cinco sonidos son:
 | `eco_cue_recycled` | una clasificación nueva dio puntos |
 | `eco_cue_not_recyclable` | una clasificación nueva no dio puntos |
 
-Los pitidos locales suenan siempre, aunque el modo parlante esté apagado. En
+Los pitidos locales suenan con la app abierta (la pantalla de la tarjeta es la
+que escucha los eventos del servicio HCE), esté o no encendido el modo
+parlante. Con la app cerrada el toque igual funciona —el servicio HCE responde
+solo— pero no hay sonido local; el del backend llega por el modo parlante. En
 la pestaña **Parlante**, el bloque plegable «Diagnóstico técnico» muestra
 «Eventos del servidor (sonido)» con el estado del puente y el último sonido, y
 «Salida de audio» con el dispositivo que Android usa (A2DP o el altavoz del
@@ -180,10 +228,16 @@ guarda**.
 
 - Al entrar, el token se guarda **de inmediato**, aunque el servidor pida
   cambiar la contraseña (`must_change_password`). En ese caso se muestra el
-  formulario de cambio y, al terminarlo, se carga la cuenta.
-- Al relanzar con un token guardado, se piden saldo e historial; un `403`
-  vuelve a mostrar el formulario de cambio y un `401` borra el token y regresa
-  al inicio de sesión con «Tu sesión expiró. Inicia sesión de nuevo.».
+  formulario de cambio y, al terminarlo, se carga la cuenta. El formulario de
+  cambio obligatorio tiene **Cerrar sesión**: borra el token en local, avisa al
+  servidor en segundo plano sin bloquear, conserva el correo escrito y vuelve
+  al inicio de sesión. Así una cuenta atrapada en el cambio no queda atrapada
+  en cada relanzamiento.
+- Al relanzar con un token guardado, se muestra «Validando tu sesión…» mientras
+  se piden saldo e historial; un `403` vuelve a mostrar el formulario de cambio
+  y un `401` borra el token y regresa al inicio de sesión con «Tu sesión
+  expiró. Inicia sesión de nuevo.». Una respuesta tardía de esa validación no
+  puede tapar un inicio de sesión que la persona ya empezó.
 - **Ver más** pide la página siguiente y agrega las filas. Cada fila muestra
   el chip de material (`Plástico`, `Metal`, `Vidrio`, `Papel`, `Otro`), la hora
   `dd/MM HH:mm` y la pastilla de puntos (`+10 pts`, o `0 pts` en gris). Un
