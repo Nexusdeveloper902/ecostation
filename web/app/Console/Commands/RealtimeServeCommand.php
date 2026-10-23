@@ -61,6 +61,7 @@ class RealtimeServeCommand extends Command
      *     sock: resource,
      *     buf: string,
      *     out: string,
+     *     closing: bool,
      *     handshook: bool,
      *     admin: bool,
      *     role: string,
@@ -210,6 +211,7 @@ class RealtimeServeCommand extends Command
             'sock' => $new,
             'buf' => '',
             'out' => '',
+            'closing' => false,
             'handshook' => false,
             'admin' => false,
             'role' => '',
@@ -704,13 +706,24 @@ class RealtimeServeCommand extends Command
         }
 
         $this->write($clientId, WsFrame::encode($reason, WsFrame::OP_CLOSE));
-        $this->drop($clientId);
+
+        if (! isset($this->clients[$clientId])) {
+            return;
+        }
+
+        // Si el close quedó a medio escribir, el bucle de escritura lo
+        // termina y recién entonces se cierra el socket.
+        $this->clients[$clientId]['closing'] = true;
+
+        if ($this->clients[$clientId]['out'] === '') {
+            $this->drop($clientId);
+        }
     }
 
     /** Encola bytes crudos (101) o un frame ya codificado. */
     private function writeRaw(int $clientId, string $bytes): void
     {
-        if (! isset($this->clients[$clientId])) {
+        if (! isset($this->clients[$clientId]) || $this->clients[$clientId]['closing']) {
             return;
         }
 
@@ -760,6 +773,10 @@ class RealtimeServeCommand extends Command
             }
 
             $this->clients[$clientId]['out'] = substr($this->clients[$clientId]['out'], $written);
+        }
+
+        if ($this->clients[$clientId]['closing']) {
+            $this->drop($clientId);
         }
     }
 
