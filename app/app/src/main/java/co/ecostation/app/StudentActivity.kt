@@ -38,6 +38,7 @@ class StudentActivity : Activity() {
     private var endpoint: EcoEndpoint? = null
 
     private lateinit var loginGroup: View
+    private lateinit var loadingGroup: View
     private lateinit var changeGroup: View
     private lateinit var accountGroup: View
 
@@ -45,12 +46,14 @@ class StudentActivity : Activity() {
     private lateinit var loginPassword: EditText
     private lateinit var loginButton: Button
     private lateinit var loginError: TextView
+    private lateinit var loginLogoutButton: Button
 
     private lateinit var changeCurrent: EditText
     private lateinit var changeNew: EditText
     private lateinit var changeConfirm: EditText
     private lateinit var changeButton: Button
     private lateinit var changeError: TextView
+    private lateinit var changeLogoutButton: Button
 
     private lateinit var studentName: TextView
     private lateinit var studentClass: TextView
@@ -67,6 +70,16 @@ class StudentActivity : Activity() {
     private var page = 1
     private var hasMore = false
 
+    /**
+     * Incremented whenever a new session action starts. A background result
+     * from an older action (a stored-token check, a page load) checks this
+     * before touching the views, so it cannot hide a login the person just
+     * started.
+     */
+    private var epoch = 0
+
+    private fun nextEpoch(): Int = ++epoch
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_student)
@@ -74,6 +87,7 @@ class StudentActivity : Activity() {
         discovery = BackendDiscovery(this)
 
         loginGroup = findViewById(R.id.loginGroup)
+        loadingGroup = findViewById(R.id.loadingGroup)
         changeGroup = findViewById(R.id.changeGroup)
         accountGroup = findViewById(R.id.accountGroup)
 
@@ -83,6 +97,7 @@ class StudentActivity : Activity() {
         loginPassword.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         loginButton = findViewById(R.id.loginButton)
         loginError = findViewById(R.id.loginError)
+        loginLogoutButton = findViewById(R.id.loginLogout)
 
         changeCurrent = findViewById(R.id.changeCurrent)
         changeCurrent.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -92,6 +107,7 @@ class StudentActivity : Activity() {
         changeConfirm.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         changeButton = findViewById(R.id.changeButton)
         changeError = findViewById(R.id.changeError)
+        changeLogoutButton = findViewById(R.id.changeLogout)
 
         studentName = findViewById(R.id.studentName)
         studentClass = findViewById(R.id.studentClass)
@@ -113,6 +129,8 @@ class StudentActivity : Activity() {
         changeButton.setOnClickListener { changePassword() }
         moreButton.setOnClickListener { loadMore() }
         logoutButton.setOnClickListener { logout() }
+        loginLogoutButton.setOnClickListener { logout() }
+        changeLogoutButton.setOnClickListener { logout() }
     }
 
     /** Relanzar con token guardado entra directo; sin token, al formulario. */
@@ -124,13 +142,22 @@ class StudentActivity : Activity() {
             showLogin(null)
             return
         }
+        // Validating a stored token can take a network round-trip: show the
+        // loading state, and ignore its result if the person starts a login
+        // (or logs out) meanwhile.
+        val expected = nextEpoch()
+        showLoading()
         background {
             val api = api()
+            if (expected != epoch) return@background
             if (api == null) {
-                ui { showAccountError(R.string.student_error_no_server) }
+                ui {
+                    if (expected != epoch) return@ui
+                    showAccountError(R.string.student_error_no_server)
+                }
                 return@background
             }
-            loadAccount(api, token)
+            loadAccount(api, token, expected)
         }
     }
 
@@ -139,6 +166,7 @@ class StudentActivity : Activity() {
     private fun login() {
         val email = loginEmail.text.toString().trim()
         val password = loginPassword.text.toString()
+        val expected = nextEpoch()
         loginButton.isEnabled = false
         loginError.visibility = View.GONE
 
@@ -146,6 +174,7 @@ class StudentActivity : Activity() {
             val api = api()
             if (api == null) {
                 ui {
+                    if (expected != epoch) return@ui
                     loginButton.isEnabled = true
                     loginError.setText(R.string.student_error_no_server)
                     loginError.visibility = View.VISIBLE
@@ -157,12 +186,18 @@ class StudentActivity : Activity() {
                 // Se guarda de inmediato, diga lo que diga must_change_password.
                 setToken(result.token)
                 ui {
+                    if (expected != epoch) return@ui
                     loginPassword.text.clear()
                     loginButton.isEnabled = true
                 }
-                if (result.mustChangePassword) ui { showChange() } else loadAccount(api, result.token)
+                if (result.mustChangePassword) {
+                    ui { if (expected == epoch) showChange() }
+                } else {
+                    loadAccount(api, result.token, expected)
+                }
             } catch (e: ApiException) {
                 ui {
+                    if (expected != epoch) return@ui
                     loginPassword.text.clear()
                     loginButton.isEnabled = true
                     loginError.setText(loginMessage(e))
@@ -170,6 +205,7 @@ class StudentActivity : Activity() {
                 }
             } catch (e: IOException) {
                 ui {
+                    if (expected != epoch) return@ui
                     loginPassword.text.clear()
                     loginButton.isEnabled = true
                     loginError.setText(R.string.student_error_server)
@@ -195,6 +231,7 @@ class StudentActivity : Activity() {
             changeError.visibility = View.VISIBLE
             return
         }
+        val expected = epoch
         changeButton.isEnabled = false
         changeError.visibility = View.GONE
 
@@ -202,6 +239,7 @@ class StudentActivity : Activity() {
             val api = api()
             if (api == null) {
                 ui {
+                    if (expected != epoch) return@ui
                     changeButton.isEnabled = true
                     changeError.setText(R.string.student_error_no_server)
                     changeError.visibility = View.VISIBLE
@@ -211,14 +249,16 @@ class StudentActivity : Activity() {
             try {
                 api.changePassword(token, current, new, confirm)
                 ui {
+                    if (expected != epoch) return@ui
                     changeCurrent.text.clear()
                     changeNew.text.clear()
                     changeConfirm.text.clear()
                     changeButton.isEnabled = true
                 }
-                loadAccount(api, token)
+                loadAccount(api, token, expected)
             } catch (e: ApiException) {
                 ui {
+                    if (expected != epoch) return@ui
                     changeButton.isEnabled = true
                     if (e.kind == ApiException.Kind.UNAUTHORIZED) {
                         setToken(null)
@@ -232,6 +272,7 @@ class StudentActivity : Activity() {
                 }
             } catch (e: IOException) {
                 ui {
+                    if (expected != epoch) return@ui
                     changeButton.isEnabled = true
                     changeError.setText(R.string.student_error_server)
                     changeError.visibility = View.VISIBLE
@@ -243,11 +284,12 @@ class StudentActivity : Activity() {
     // --------------------------------------------------------------- cuenta
 
     /** Corre en el hilo de fondo; publica el resultado en el hilo de UI. */
-    private fun loadAccount(api: StudentApi, token: String) {
+    private fun loadAccount(api: StudentApi, token: String, expectedEpoch: Int) {
         try {
             val balance = api.balance(token)
             val history = api.history(token, 1)
             ui {
+                if (expectedEpoch != epoch) return@ui
                 page = 1
                 hasMore = history.hasMore
                 rows.clear()
@@ -256,9 +298,15 @@ class StudentActivity : Activity() {
                 renderAccount(balance)
             }
         } catch (e: ApiException) {
-            ui { handleAccountError(e) }
+            ui {
+                if (expectedEpoch != epoch) return@ui
+                handleAccountError(e)
+            }
         } catch (e: IOException) {
-            ui { showAccountError(R.string.student_error_server) }
+            ui {
+                if (expectedEpoch != epoch) return@ui
+                showAccountError(R.string.student_error_server)
+            }
         }
     }
 
@@ -269,11 +317,13 @@ class StudentActivity : Activity() {
             return
         }
         val next = page + 1
+        val expected = epoch
         moreButton.isEnabled = false
         background {
             val api = api()
             if (api == null) {
                 ui {
+                    if (expected != epoch) return@ui
                     moreButton.isEnabled = true
                     showAccountError(R.string.student_error_no_server)
                 }
@@ -282,6 +332,7 @@ class StudentActivity : Activity() {
             try {
                 val history = api.history(token, next)
                 ui {
+                    if (expected != epoch) return@ui
                     page = next
                     hasMore = history.hasMore
                     rows.addAll(history.items)
@@ -291,11 +342,13 @@ class StudentActivity : Activity() {
                 }
             } catch (e: ApiException) {
                 ui {
+                    if (expected != epoch) return@ui
                     moreButton.isEnabled = true
                     handleAccountError(e)
                 }
             } catch (e: IOException) {
                 ui {
+                    if (expected != epoch) return@ui
                     moreButton.isEnabled = true
                     showAccountError(R.string.student_error_server)
                 }
@@ -323,7 +376,11 @@ class StudentActivity : Activity() {
         }
     }
 
-    /** Sale primero en local; el borrado en el servidor es best-effort. */
+    /**
+     * Sale primero en local (el token se borra antes de la red); el borrado en
+     * el servidor es best-effort. El correo escrito se conserva para volver a
+     * entrar, y la llave HCE nunca se toca.
+     */
     private fun logout() {
         val token = settings.studentToken
         setToken(null)
@@ -342,6 +399,7 @@ class StudentActivity : Activity() {
     // ---------------------------------------------------------------- render
 
     private fun renderAccount(balance: Balance) {
+        loadingGroup.visibility = View.GONE
         loginGroup.visibility = View.GONE
         changeGroup.visibility = View.GONE
         accountGroup.visibility = View.VISIBLE
@@ -371,6 +429,7 @@ class StudentActivity : Activity() {
         String.format(Locale.US, "%,d", value).replace(',', '.')
 
     private fun showAccountError(messageRes: Int) {
+        loadingGroup.visibility = View.GONE
         loginGroup.visibility = View.GONE
         changeGroup.visibility = View.GONE
         accountGroup.visibility = View.VISIBLE
@@ -378,7 +437,17 @@ class StudentActivity : Activity() {
         accountError.visibility = View.VISIBLE
     }
 
+    private fun showLoading() {
+        loadingGroup.visibility = View.VISIBLE
+        loginGroup.visibility = View.GONE
+        changeGroup.visibility = View.GONE
+        accountGroup.visibility = View.GONE
+    }
+
     private fun showLogin(message: String?) {
+        // Cualquier respuesta en vuelo pertenece a una acción anterior.
+        nextEpoch()
+        loadingGroup.visibility = View.GONE
         loginGroup.visibility = View.VISIBLE
         changeGroup.visibility = View.GONE
         accountGroup.visibility = View.GONE
@@ -393,6 +462,7 @@ class StudentActivity : Activity() {
     }
 
     private fun showChange() {
+        loadingGroup.visibility = View.GONE
         loginGroup.visibility = View.GONE
         changeGroup.visibility = View.VISIBLE
         accountGroup.visibility = View.GONE

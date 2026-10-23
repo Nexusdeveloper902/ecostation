@@ -86,7 +86,8 @@
                     android:layout_width="match_parent"
                     android:drawableStart="@drawable/ic_lock_18"
                     android:hint="@string/student_password"
-                    android:inputType="textPassword" />
+                    android:inputType="textPassword"
+                android:importantForAutofill="no" />
 
                 <co.ecostation.app.ui.EcoButton
                     android:id="@+id/loginButton"
@@ -106,6 +107,13 @@
                     android:textColor="@color/eco_danger_text"
                     android:textSize="13sp"
                     android:visibility="gone" />
+
+                <co.ecostation.app.ui.EcoButton
+                    android:id="@+id/loginLogout"
+                    style="@style/Eco.Button.Ghost"
+                    android:layout_width="match_parent"
+                    android:layout_marginTop="@dimen/space_3"
+                    android:text="@string/student_logout" />
 
                 <co.ecostation.app.ui.EcoTextView
                     style="@style/Eco.Text.Micro"
@@ -168,7 +176,8 @@
                         android:layout_width="match_parent"
                         android:drawableStart="@drawable/ic_lock_18"
                         android:hint="@string/student_current_password"
-                        android:inputType="textPassword" />
+                        android:inputType="textPassword"
+                android:importantForAutofill="no" />
 
                     <co.ecostation.app.ui.EcoTextView
                         style="@style/Eco.FieldLabel"
@@ -183,7 +192,8 @@
                         android:layout_width="match_parent"
                         android:drawableStart="@drawable/ic_lock_18"
                         android:hint="@string/student_new_password"
-                        android:inputType="textPassword" />
+                        android:inputType="textPassword"
+                android:importantForAutofill="no" />
 
                     <co.ecostation.app.ui.EcoTextView
                         style="@style/Eco.FieldLabel"
@@ -198,7 +208,8 @@
                         android:layout_width="match_parent"
                         android:drawableStart="@drawable/ic_lock_18"
                         android:hint="@string/student_repeat_password"
-                        android:inputType="textPassword" />
+                        android:inputType="textPassword"
+                android:importantForAutofill="no" />
 
                     <co.ecostation.app.ui.EcoButton
                         android:id="@+id/changeButton"
@@ -218,6 +229,13 @@
                         android:textColor="@color/eco_danger_text"
                         android:textSize="13sp"
                         android:visibility="gone" />
+
+                    <co.ecostation.app.ui.EcoButton
+                        android:id="@+id/changeLogout"
+                        style="@style/Eco.Button.Ghost"
+                        android:layout_width="match_parent"
+                        android:layout_marginTop="@dimen/space_3"
+                        android:text="@string/student_logout" />
                 </LinearLayout>
             </LinearLayout>
         </ScrollView>
@@ -413,6 +431,32 @@
                     android:layout_marginTop="@dimen/space_1"
                     android:text="@string/student_logout" />
             </LinearLayout>
+        </LinearLayout>
+
+        <!-- ================= Grupo 4: validando sesión ==================== -->
+        <LinearLayout
+            android:id="@+id/loadingGroup"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="@dimen/space_5"
+            android:visibility="gone">
+
+            <ProgressBar
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:indeterminate="true"
+                android:indeterminateTint="@color/eco_primary_deep" />
+
+            <co.ecostation.app.ui.EcoTextView
+                style="@style/Eco.Text.BodySmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_3"
+                android:gravity="center"
+                android:text="@string/student_loading"
+                android:textColor="@color/eco_slate" />
         </LinearLayout>
     </FrameLayout>
 
