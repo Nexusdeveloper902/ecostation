@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use App\Models\PointsLedger;
+use App\Models\PresenceEvent;
 use App\Models\RecyclingDeposit;
 use App\Models\Student;
 use App\Models\User;
@@ -72,6 +73,69 @@ class StudentApiTest extends TestCase
 
         $this->asStudent($carlosToken)->getJson('/api/v1/me/balance')->assertOk()->assertJsonPath('balance', 0);
         $this->asStudent($carlosToken)->getJson('/api/v1/me/history')->assertOk()->assertJsonCount(0, 'data');
+    }
+
+    #[Test]
+    public function history_page_two_keeps_the_newest_first_order_after_twenty_deposits(): void
+    {
+        $student = Student::where('name', 'Maria González')->firstOrFail();
+        $card = $this->cardOf('Maria González');
+        $depositIds = [];
+
+        // 22 depósitos con minutos distintos: el más nuevo es i = 0.
+        for ($i = 0; $i < 22; $i++) {
+            $event = PresenceEvent::create([
+                'card_id' => $card->id,
+                'reader_id' => $this->reader()->id,
+                'class_id' => $student->class_id,
+                'occurred_at' => now()->subMinutes($i),
+            ]);
+
+            $depositIds[] = RecyclingDeposit::create([
+                'event_id' => $event->id,
+                'material_class' => 'plastic',
+                'confidence' => 0.95,
+                'points_awarded' => 10,
+                'is_bottle' => true,
+                'is_recyclable' => true,
+            ])->id;
+        }
+
+        $token = $this->mintToken($this->studentAccount('maria')->email)->json('token');
+
+        $pageOne = $this->asStudent($token)->getJson('/api/v1/me/history')->assertOk();
+        $pageOne->assertJsonCount(20, 'data');
+        $this->assertSame($depositIds[0], $pageOne->json('data.0.deposit_id'));
+        $this->assertSame($depositIds[19], $pageOne->json('data.19.deposit_id'));
+        $this->assertNotNull($pageOne->json('next_page_url'));
+
+        $pageTwo = $this->asStudent($token)->getJson('/api/v1/me/history?page=2')->assertOk();
+        $pageTwo->assertJsonCount(2, 'data');
+        $this->assertSame($depositIds[20], $pageTwo->json('data.0.deposit_id'));
+        $this->assertSame($depositIds[21], $pageTwo->json('data.1.deposit_id'));
+        $this->assertNull($pageTwo->json('next_page_url'));
+    }
+
+    #[Test]
+    public function the_token_endpoint_is_throttled_after_five_failed_attempts(): void
+    {
+        for ($i = 0; $i < 5; $i++) {
+            $this->flushHeaders();
+            $this->app['auth']->forgetGuards();
+
+            $this->postJson('/api/v1/auth/token', [
+                'email' => 'maria@ecostation.test',
+                'password' => 'wrong-password',
+                'device_name' => 'EcoStation Android',
+            ])->assertStatus(422);
+        }
+
+        $this->flushHeaders();
+        $this->postJson('/api/v1/auth/token', [
+            'email' => 'maria@ecostation.test',
+            'password' => 'wrong-password',
+            'device_name' => 'EcoStation Android',
+        ])->assertStatus(429);
     }
 
     #[Test]
