@@ -25,6 +25,7 @@ import co.ecostation.app.hce.ApduProtocol
 import co.ecostation.app.hce.CredentialId
 import co.ecostation.app.hce.CredentialRuntime
 import co.ecostation.app.hce.EcoHostApduService
+import co.ecostation.app.hce.EnrollmentWindow
 import co.ecostation.app.hce.HceEvents
 import co.ecostation.app.hce.LinkState
 import co.ecostation.app.speaker.FeedbackBridge
@@ -153,8 +154,7 @@ class MainActivity : Activity() {
             } else if (event.startsWith(ENROLL_ERROR_EVENT)) {
                 // The reader got 6985: nothing was adopted, so do not keep
                 // promising an open window. `linkSent` is untouched.
-                settings.linkPending = false
-                settings.linkPendingUntilMs = 0L
+                settings.updateLinkFlags(LinkState::closeWindow)
                 refreshKeyPresence()
             }
             postRender()
@@ -222,10 +222,10 @@ class MainActivity : Activity() {
             finish()
         }
         linkCancel.setOnClickListener {
+            // Cancel only closes the window. It must NEVER discard an
+            // unconfirmed adoption: the backend may already hold the new key.
             CredentialRuntime.enrollment.close()
-            settings.linkPending = false
-            settings.linkPendingUntilMs = 0L
-            settings.linkSent = false
+            settings.updateLinkFlags(LinkState::afterCancel)
             handler.removeCallbacks(tick)
             refreshKeyPresence()
             postRender()
@@ -327,19 +327,23 @@ class MainActivity : Activity() {
     }
 
     /**
-     * A link window is in-memory ([CredentialRuntime.enrollment]) and bounded
-     * by the persisted wall-clock deadline. Either one being gone means the
-     * promised window no longer exists; drop the pending flags so the UI does
-     * not show "vinculando 0 s" after a process death. `linkSent` survives:
-     * an adoption still needs its confirming CHALLENGE.
+     * The in-memory enrollment window is authoritative and runs on the
+     * monotonic clock. Only when it is gone (expired, or the process died) does
+     * the persisted wall-clock deadline bound how long the flag survives.
+     * `linkSent` survives: an adoption still needs its confirming CHALLENGE.
      */
     private fun expireLinkWindowIfNeeded() {
-        if (!settings.linkPending) return
-        val windowGone = CredentialRuntime.enrollment.remainingMs(CredentialRuntime.nowMs()) <= 0
-        val expired = settings.linkPendingUntilMs <= System.currentTimeMillis()
-        if (windowGone || expired) {
-            settings.linkPending = false
-            settings.linkPendingUntilMs = 0L
+        val flags = settings.linkFlags
+        if (!flags.pending) return
+        val remaining = CredentialRuntime.enrollment.remainingMs(CredentialRuntime.nowMs())
+        if (LinkState.persistedWindowExpired(
+                pending = flags.pending,
+                windowRemainingMs = remaining,
+                pendingUntilMs = flags.pendingUntilMs,
+                wallNowMs = System.currentTimeMillis(),
+            )
+        ) {
+            settings.updateLinkFlags(LinkState::closeWindow)
             handler.removeCallbacks(tick)
         }
     }
@@ -406,18 +410,20 @@ class MainActivity : Activity() {
             .setMessage(R.string.link_body)
             .setPositiveButton(R.string.link_start) { _, _ ->
                 if (!CredentialRuntime.beginEnrollment()) {
-                    settings.linkPending = false
-                    settings.linkPendingUntilMs = 0L
+                    // The Keystore validation failed before any window opened.
+                    settings.updateLinkFlags(LinkState::closeWindow)
                     AlertDialog.Builder(this)
                         .setMessage(R.string.link_failed)
                         .setPositiveButton(android.R.string.ok, null)
                         .show()
                 } else {
                     // An explicit re-link supersedes any unconfirmed adoption.
-                    settings.linkSent = false
-                    settings.linkPending = true
-                    settings.linkPendingUntilMs =
-                        System.currentTimeMillis() + ENROLLMENT_TTL_MS.toLong()
+                    settings.updateLinkFlags {
+                        LinkState.beginWindow(
+                            it,
+                            System.currentTimeMillis() + EnrollmentWindow.DEFAULT_TTL_MS,
+                        )
+                    }
                 }
                 handler.removeCallbacks(tick)
                 handler.post(tick)
@@ -445,12 +451,10 @@ class MainActivity : Activity() {
 
     private enum class CardState { READY, LINKED, VERIFIED, NFC_OFF, UNSUPPORTED, LINKING, LINK_SENT, NOT_LINKED }
 
-    /** Persisted flags resolved against the wall clock (survives process death). */
+    /** Persisted flags resolved against the live MONOTONIC window. */
     private fun linkPhase(): LinkState.Phase = LinkState.phase(
-        pending = settings.linkPending,
-        pendingUntilMs = settings.linkPendingUntilMs,
-        sent = settings.linkSent,
-        nowMs = System.currentTimeMillis(),
+        flags = settings.linkFlags,
+        windowRemainingMs = CredentialRuntime.enrollment.remainingMs(CredentialRuntime.nowMs()),
     )
 
     private fun currentState(): CardState {
@@ -458,15 +462,14 @@ class MainActivity : Activity() {
         val adapter = NfcAdapter.getDefaultAdapter(this)
         if (adapter == null || !hasHce) return CardState.UNSUPPORTED
         if (!adapter.isEnabled) return CardState.NFC_OFF
-        if (SystemClock.elapsedRealtime() - verifiedAtMs < VERIFIED_HOLD_MS) return CardState.VERIFIED
 
-        when (linkPhase()) {
-            // A re-link window wins over an earlier, still-unconfirmed adoption.
-            LinkState.Phase.PENDING -> return CardState.LINKING
-            // LLAVE ENVIADA until a CHALLENGE proves the reader knows the key.
-            LinkState.Phase.SENT -> return CardState.LINK_SENT
-            LinkState.Phase.IDLE -> Unit
-        }
+        val phase = linkPhase()
+        // A re-link window wins over an earlier, still-unconfirmed adoption
+        // AND over the VERIFIED latch: the person is looking at the window.
+        if (phase == LinkState.Phase.PENDING) return CardState.LINKING
+        if (SystemClock.elapsedRealtime() - verifiedAtMs < VERIFIED_HOLD_MS) return CardState.VERIFIED
+        // LLAVE ENVIADA until the desk-flow CHALLENGE confirms the adoption.
+        if (phase == LinkState.Phase.SENT) return CardState.LINK_SENT
 
         // A phone without a key cannot answer a reader: say so instead of READY.
         if (!hasKey()) return CardState.NOT_LINKED
@@ -566,13 +569,19 @@ class MainActivity : Activity() {
         unlinkedGroup.visibility = if (state == CardState.NOT_LINKED) View.VISIBLE else View.GONE
         // Re-link is recoverable without uninstalling: a lost ENROLL response
         // ("llave enviada") or a backend/key mismatch offers a fresh window.
-        val relink = LinkState.canRelink(linkPhase(), hasKey())
+        val phase = linkPhase()
+        val relink = LinkState.canRelink(phase, hasKey())
         val showLink = state == CardState.NOT_LINKED ||
             (relink && state != CardState.NFC_OFF && state != CardState.UNSUPPORTED)
-        linkPhone.setText(if (hasKey()) R.string.link_again else R.string.link_phone)
+        // In SENT the action is "Vincular de nuevo" even if the cached key
+        // probe transiently says there is no key.
+        linkPhone.setText(
+            if (phase == LinkState.Phase.SENT || hasKey()) R.string.link_again else R.string.link_phone,
+        )
         linkPhone.visibility = if (showLink) View.VISIBLE else View.GONE
-        linkCancel.visibility =
-            if (state == CardState.LINKING || state == CardState.LINK_SENT) View.VISIBLE else View.GONE
+        // Cancel is only meaningful while VINCULANDO. In LLAVE ENVIADA the
+        // recovery action is a re-link, which must not discard the adoption.
+        linkCancel.visibility = if (LinkState.canCancel(phase)) View.VISIBLE else View.GONE
         nfcSettingsButton.visibility = if (state == CardState.NFC_OFF) View.VISIBLE else View.GONE
 
         val showTarget = state == CardState.READY || state == CardState.LINKED ||
@@ -583,7 +592,10 @@ class MainActivity : Activity() {
             stateView.layoutParams = it
         }
         if (state == CardState.LINKING) {
-            tapTarget.showCountdown(seconds, remainingMs.toFloat() / ENROLLMENT_TTL_MS)
+            tapTarget.showCountdown(
+                seconds,
+                remainingMs.toFloat() / EnrollmentWindow.DEFAULT_TTL_MS,
+            )
         } else {
             tapTarget.showPhone()
         }
@@ -889,7 +901,6 @@ class MainActivity : Activity() {
         private const val ENROLL_EVENT = "ENROLAR -> 9000"
         private const val ENROLL_ERROR_EVENT = "ENROLAR -> error"
         private const val SELECT_EVENT = "SELECCIONAR AID"
-        private const val ENROLLMENT_TTL_MS = 60_000f
         private const val SIGNAL_LIMIT = 3
         private val TEST_SEQUENCE_TOKEN = Any()
     }

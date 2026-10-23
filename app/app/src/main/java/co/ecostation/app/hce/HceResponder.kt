@@ -20,6 +20,8 @@ class HceResponder(
     private val credentialId: () -> String = { ApduProtocol.CRED_ID },
     private val clockMs: () -> Long = { SystemClock.elapsedRealtime() },
     private val onAuthenticated: (() -> Unit)? = null,
+    private val onAdopting: (() -> Unit)? = null,
+    private val onAdoptFailed: (() -> Unit)? = null,
     private val onAdopted: (() -> Unit)? = null,
 ) {
     private val session = ApduProtocol.Session()
@@ -36,7 +38,15 @@ class HceResponder(
             keys,
             enrollment,
             clockMs(),
-            onReleased = { raw -> keys.adopt(id, raw) },
+            onReleased = { raw ->
+                // Flag the adoption BEFORE the store import (fail-safe: worst
+                // case the UI shows LLAVE ENVIADA) and roll it back only if the
+                // store refuses the key.
+                onAdopting?.invoke()
+                val adopted = keys.adopt(id, raw)
+                if (!adopted) onAdoptFailed?.invoke()
+                adopted
+            },
         )
         if (isSuccess(response)) {
             when {
@@ -105,10 +115,17 @@ object CredentialRuntime {
      * Returns false only if the window cannot be opened (never the old key's
      * fault), so the UI does not promise a link that cannot happen.
      */
-    fun beginEnrollment(credentialId: String = ApduProtocol.CRED_ID): Boolean {
+    fun beginEnrollment(
+        credentialId: String = ApduProtocol.CRED_ID,
+        keys: CredentialKeyStore = this.keys,
+        clockMs: () -> Long = { nowMs() },
+    ): Boolean {
+        // Warm/validate the Keystore BEFORE promising a window: the UI turns
+        // this false into the "no se pudo crear su llave segura" message.
+        if (!keys.isAvailable()) return false
         val raw = ByteArray(CredentialKeyStore.KEY_BYTES).also { SecureRandom().nextBytes(it) }
         try {
-            enrollment.open(credentialId, raw, nowMs())
+            enrollment.open(credentialId, raw, clockMs())
         } finally {
             raw.fill(0)
         }

@@ -23,31 +23,42 @@ class EcoHostApduService : HostApduService() {
     override fun onCreate() {
         super.onCreate()
         settings = AppSettings(this)
+        CredentialId.install(this)
+
+        // Warm both lazy paths here, where the NFC stack already allows a
+        // slower start: the first APDU must not block on the prefs latch or on
+        // KeyStore.load() (the RF field timeout is short).
+        settings.linkPending
+        CredentialRuntime.keys.hasKey(ApduProtocol.CRED_ID)
+
         responder = HceResponder(
             CredentialRuntime.keys,
             CredentialRuntime.enrollment,
             onAuthenticated = {
-                // A CHALLENGE answered with the OLD key while a re-link window
-                // is open proves nothing about the new one: keep that window
-                // (and its "vinculando" state) intact.
-                val now = System.currentTimeMillis()
-                val phase = LinkState.phase(
-                    pending = settings.linkPending,
-                    pendingUntilMs = settings.linkPendingUntilMs,
-                    sent = settings.linkSent,
-                    nowMs = now,
-                )
-                if (phase != LinkState.Phase.PENDING) settings.linkSent = false
+                // Only a CHALLENGE inside the short desk window proves the
+                // backend adopted the key. A later one may be answered with the
+                // OLD key while a re-link window is open, so keep SENT then.
+                settings.updateLinkFlags {
+                    LinkState.afterChallenge(
+                        flags = it,
+                        windowRemainingMs = CredentialRuntime.enrollment.remainingMs(CredentialRuntime.nowMs()),
+                        nowMs = System.currentTimeMillis(),
+                    )
+                }
             },
-            onAdopted = {
-                // The reader received the new key: this is the only place
-                // "llave enviada" is turned on.
-                settings.linkPending = false
-                settings.linkPendingUntilMs = 0L
-                settings.linkSent = true
+            onAdopting = {
+                // Before keys.adopt: the fail-safe worst case is a visible
+                // LLAVE ENVIADA, never a silent success. One edit also closes
+                // the window.
+                settings.updateLinkFlags {
+                    LinkState.adoptionStarted(it, System.currentTimeMillis())
+                }
+            },
+            onAdoptFailed = {
+                // The store refused the import: roll the optimistic flag back.
+                settings.updateLinkFlags(LinkState::adoptionFailed)
             },
         )
-        CredentialId.install(this)
     }
 
     override fun processCommandApdu(commandApdu: ByteArray?, extras: Bundle?): ByteArray {

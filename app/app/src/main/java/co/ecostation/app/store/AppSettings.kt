@@ -46,38 +46,51 @@ class AppSettings(context: Context) {
         set(value) = plain.edit().putBoolean(KEY_SPEAKER_ENABLED, value).apply()
 
     /**
-     * True from the moment a link window opens until the reader adopts the
-     * new key (`ENROLL` `9000`) or the person cancels. [linkPendingUntilMs]
-     * bounds it in wall-clock time, so a process death cannot leave the UI
-     * promising a window that no longer exists. UI flags only, never secrets:
-     * the old key keeps working while they are set.
+     * The link hand-off flags, read and written as ONE value.
+     *
+     * `pending` is bound to a live monotonic window; `pendingUntilMs` is only
+     * a wall-clock bound for a flag left behind by a process restart (the live
+     * countdown never consults the wall clock). `sent` means a reader adopted
+     * the key; `sentAtMs` remembers when, so only a desk-flow `CHALLENGE`
+     * inside the short window clears it. UI flags only, never secrets: the old
+     * key keeps working while they are set.
      */
-    var linkPending: Boolean
-        get() = plain.getBoolean(KEY_LINK_PENDING, false)
-        set(value) = putBooleanIfChanged(KEY_LINK_PENDING, value)
-
-    /** Wall-clock deadline of the open link window; 0 when none is open. */
-    var linkPendingUntilMs: Long
-        get() = plain.getLong(KEY_LINK_PENDING_UNTIL, 0L)
-        set(value) {
-            if (linkPendingUntilMs == value) return
-            plain.edit().putLong(KEY_LINK_PENDING_UNTIL, value).apply()
-        }
+    var linkFlags: LinkFlags
+        get() = synchronized(LINK_LOCK) { readLinkFlags() }
+        set(value) = synchronized(LINK_LOCK) { writeLinkFlags(value) }
 
     /**
-     * True after the reader adopted the new key (`ENROLL` `9000`) and until a
-     * successful `CHALLENGE` proves the reader actually uses it, or until the
-     * person starts an explicit re-link. Set only by the adopt-success path.
+     * Read-modify-write of the link flags under one lock, so two threads (the
+     * APDU service and the Activity) cannot each build a transition from the
+     * same old value and lose one.
      */
-    var linkSent: Boolean
-        get() = plain.getBoolean(KEY_LINK_SENT, false)
-        set(value) = putBooleanIfChanged(KEY_LINK_SENT, value)
-
-    /** Link flags change from the APDU thread; skip disk writes when unchanged. */
-    private fun putBooleanIfChanged(key: String, value: Boolean) {
-        if (plain.getBoolean(key, false) == value) return
-        plain.edit().putBoolean(key, value).apply()
+    fun updateLinkFlags(transform: (LinkFlags) -> LinkFlags) {
+        synchronized(LINK_LOCK) {
+            val current = readLinkFlags()
+            val next = transform(current)
+            if (next != current) writeLinkFlags(next)
+        }
     }
+
+    private fun readLinkFlags(): LinkFlags = LinkFlags(
+        pending = plain.getBoolean(KEY_LINK_PENDING, false),
+        pendingUntilMs = plain.getLong(KEY_LINK_PENDING_UNTIL, 0L),
+        sent = plain.getBoolean(KEY_LINK_SENT, false),
+        sentAtMs = plain.getLong(KEY_LINK_SENT_AT, 0L),
+    )
+
+    /** One edit for all four flags: pending/deadline can never disagree. */
+    private fun writeLinkFlags(value: LinkFlags) {
+        plain.edit()
+            .putBoolean(KEY_LINK_PENDING, value.pending)
+            .putLong(KEY_LINK_PENDING_UNTIL, value.pendingUntilMs)
+            .putBoolean(KEY_LINK_SENT, value.sent)
+            .putLong(KEY_LINK_SENT_AT, value.sentAtMs)
+            .apply()
+    }
+
+    /** True while a hand-off window is persisted (phase still needs the clock). */
+    val linkPending: Boolean get() = linkFlags.pending
 
     // ----------------------------------------------------------- sealed prefs
 
@@ -106,12 +119,13 @@ class AppSettings(context: Context) {
      * - A damaged *format* is dropped: it can never open.
      * - An invalidated/unrecoverable KEY wipes every sealed value and the key
      *   once: they were all sealed under the same dead key.
-     * - A field-AAD failure first retries as a legacy (no-AAD) blob. Older
-     *   installs sealed without AAD; if that opens, the value is re-sealed
-     *   with its field AAD and returned instead of being orphaned.
-     * - If both reads fail, the entry cannot be opened by this app version:
-     *   it is dropped as "unavailable" so a later read does not repeat the
-     *   failed crypto path forever.
+     * - Only a definitive AUTHENTICATION failure (wrong AAD/key) first retries
+     *   as a legacy (no-AAD) blob. Older installs sealed without AAD; if that
+     *   opens, the value is re-sealed with its field AAD and returned.
+     * - Any other provider/Keystore error is transient: return null and KEEP
+     *   the ciphertext. A flaky Keystore must never destroy a readable secret.
+     * - If both reads fail authentication, the entry cannot be opened by this
+     *   app version: it is dropped as malformed.
      */
     private fun readSealed(name: String): String? {
         val stored = sealed.getString(name, null) ?: return null
@@ -137,29 +151,40 @@ class AppSettings(context: Context) {
             ReadResult.Value(opened)
         }
     } catch (e: Exception) {
-        if (isKeyInvalidated(e)) ReadResult.Invalidated else migrateLegacyAad(name, stored)
+        when (SealedReadPolicy.onBoundFailure(e, isKeyInvalidated(e))) {
+            SealedReadPolicy.FailureAction.MIGRATE_LEGACY -> migrateLegacyAad(name, stored)
+            SealedReadPolicy.FailureAction.DROP -> {
+                sealed.edit().remove(name).apply()
+                ReadResult.Malformed
+            }
+            SealedReadPolicy.FailureAction.INVALIDATE_ALL -> ReadResult.Invalidated
+            SealedReadPolicy.FailureAction.UNAVAILABLE -> ReadResult.Unavailable
+        }
     }
 
     /**
-     * Before AAD binding, values were sealed with no associated data. Try that
-     * shape once; on success re-seal immediately so the next read takes the
-     * bound path. A swapped field AAD still fails both reads and is dropped.
+     * Retry the pre-AAD shape once. The decision (and the rule that a re-seal
+     * failure must never lose the value or delete the legacy blob) lives in
+     * [SealedReadPolicy] so it is tested on the host.
      */
-    private fun migrateLegacyAad(name: String, stored: String): ReadResult = try {
-        val legacy = Sealer.openStrict(keystoreKey(), stored, null)
-        if (legacy == null) {
-            sealed.edit().remove(name).apply()
-            ReadResult.Malformed
-        } else {
-            sealed.edit().putString(name, Sealer.seal(keystoreKey(), legacy, aad(name))).apply()
-            ReadResult.Value(legacy)
-        }
-    } catch (e: Exception) {
-        if (isKeyInvalidated(e)) {
-            ReadResult.Invalidated
-        } else {
-            sealed.edit().remove(name).apply()
-            ReadResult.Unavailable
+    private fun migrateLegacyAad(name: String, stored: String): ReadResult {
+        val outcome = SealedReadPolicy.migrateLegacy(
+            openLegacy = { Sealer.openStrict(keystoreKey(), stored, null) },
+            reseal = { text ->
+                sealed.edit()
+                    .putString(name, Sealer.seal(keystoreKey(), text, aad(name)))
+                    .apply()
+            },
+            isInvalidated = ::isKeyInvalidated,
+        )
+        return when (outcome.action) {
+            SealedReadPolicy.LegacyAction.VALUE -> ReadResult.Value(outcome.value!!)
+            SealedReadPolicy.LegacyAction.DROP -> {
+                sealed.edit().remove(name).apply()
+                ReadResult.Malformed
+            }
+            SealedReadPolicy.LegacyAction.INVALIDATE_ALL -> ReadResult.Invalidated
+            SealedReadPolicy.LegacyAction.UNAVAILABLE -> ReadResult.Unavailable
         }
     }
 
@@ -241,11 +266,15 @@ class AppSettings(context: Context) {
         const val KEY_LINK_PENDING = "link_pending"
         const val KEY_LINK_PENDING_UNTIL = "link_pending_until"
         const val KEY_LINK_SENT = "link_sent"
+        const val KEY_LINK_SENT_AT = "link_sent_at"
         const val KEY_SPEAKER_EMAIL = "speaker_email"
         const val KEY_SPEAKER_PASSWORD = "speaker_password"
         const val KEY_STUDENT_TOKEN = "student_token"
 
         /** One lock for every instance: two generators racing on one alias fail. */
         val KEY_LOCK = Any()
+
+        /** Serializes link-flag read-modify-write across Activity and APDU thread. */
+        val LINK_LOCK = Any()
     }
 }

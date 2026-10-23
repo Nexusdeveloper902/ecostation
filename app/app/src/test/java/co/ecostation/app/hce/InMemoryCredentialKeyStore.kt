@@ -15,6 +15,12 @@ class InMemoryCredentialKeyStore : CredentialKeyStore {
     /** Set false to simulate a Keystore that refuses the imported key. */
     var adoptResult = true
 
+    /** Set false to simulate a Keystore provider that cannot be loaded. */
+    var available = true
+
+    /** Test hook: runs inside adopt(), to pin ordering against the UI flag. */
+    var onAdopt: (() -> Unit)? = null
+
     fun put(credentialId: String, key: ByteArray) {
         keys[credentialId] = key.copyOf()
     }
@@ -26,7 +32,10 @@ class InMemoryCredentialKeyStore : CredentialKeyStore {
 
     override fun hasKey(credentialId: String) = keys.containsKey(credentialId)
 
+    override fun isAvailable() = available
+
     override fun adopt(credentialId: String, raw: ByteArray): Boolean {
+        onAdopt?.invoke()
         if (!adoptResult) return false
         keys[credentialId] = raw.copyOf()
         return true

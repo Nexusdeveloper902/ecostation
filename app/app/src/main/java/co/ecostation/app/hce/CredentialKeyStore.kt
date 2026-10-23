@@ -27,6 +27,14 @@ interface CredentialKeyStore {
     fun hasKey(credentialId: String): Boolean
 
     /**
+     * Warm the provider and report whether it can be used at all. Unlike
+     * [hasKey], `false` is a broken store, not a first-time link: opening an
+     * enrollment window on a dead Keystore would promise a link that cannot
+     * happen.
+     */
+    fun isAvailable(): Boolean = true
+
+    /**
      * Import [raw] as this credential's key, REPLACING any previous one.
      * Used when the pairing reader confirms it received the key: until then
      * the old key stays in place and keeps answering taps. Returns false when
@@ -79,6 +87,14 @@ class AndroidKeystoreCredentialKeyStore : CredentialKeyStore {
 
     override fun hasKey(credentialId: String): Boolean = try {
         keyStore.containsAlias(alias(credentialId))
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Forces the lazy `KeyStore.load` and reports whether it worked. */
+    override fun isAvailable(): Boolean = try {
+        keyStore.size()
+        true
     } catch (e: Exception) {
         false
     }

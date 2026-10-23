@@ -70,18 +70,32 @@ confirma el `ENROLL` (`adopt`). Si la ventana expira, se cancela o el lector
 nunca contesta, el teléfono sigue sirviendo con la llave vieja.
 
 La UI separa dos banderas persistidas (más un vencimiento de 60 s en hora de
-pared, para sobrevivir a la muerte del proceso):
+pared, que solo acota una bandera dejada por la muerte del proceso):
 
 - `linkPending` + `linkPendingUntilMs` mientras la ventana está abierta
-  (`VINCULANDO`); se limpian al cancelar o al reanudar con la ventana vencida;
-- `linkSent`, activada **solo** cuando el lector adopta la llave (`ENROLL`
-  `9000`), muestra `LLAVE ENVIADA` hasta el primer `CHALLENGE` respondido con
-  `9000` que ocurra fuera de una ventana nueva.
+  (`VINCULANDO`); la ventana viva manda por el reloj **monotónico**, así que un
+  salto de hora del teléfono no la oculta ni deja «VINCULANDO 0 s». Al
+  reanudar con la ventana ya inexistente se limpia la bandera;
+- `linkSent` + `linkSentAtMs`, activada **solo** cuando el lector adopta la
+  llave (`ENROLL` `9000`), muestra `LLAVE ENVIADA`.
 
 Con una llave presente y sin ventana en curso (`IDLE` o `SENT`) la tarjeta
 ofrece «Vincular de nuevo»: un `ENROLL` perdido o una llave desincronizada se
-resuelve sin desinstalar, pasando por el mismo flujo seguro. Cancelar cierra la
-ventana sin tocar el Keystore.
+resuelve sin desinstalar, pasando por el mismo flujo seguro. En `SENT` la
+acción sigue disponible aunque la sonda cacheada de la llave diga que no hay
+ninguna. Cancelar solo se ofrece en `VINCULANDO`, cierra la ventana y **nunca**
+borra `linkSent`: una adopción que el backend no confirmó no se descarta desde
+la pantalla.
+
+**«LLAVE ENVIADA» no es una garantía del backend.** Solo significa que el
+lector de la mesa contestó `ENROLL` con `9000` y que el teléfono importó la
+llave nueva. Si el backend conserva la llave vieja, la credencial no sirve
+hasta re-vincular. Para no empeorarlo, la UI solo pasa a `LISTA` cuando un
+`CHALLENGE` respondido con `9000` ocurre dentro de los **2 minutos** posteriores
+a la adopción (el flujo de la mesa). Un `CHALLENGE` más tarde puede ser el
+backend respondiendo con la llave vieja y no prueba nada; en ese caso
+`LLAVE ENVIADA` se mantiene y «Vincular de nuevo» sigue disponible. La
+confirmación real es del backend y de la mesa; la app no puede verla.
 
 ### Tipografías, iconos y marca
 
@@ -144,7 +158,9 @@ recibe la contraseña», la política vive en el código:
   se descartan.
 - Los cuerpos de manifest/login están acotados a 64 KB y los JSON a 1 MB; al
   pasarse, la operación falla con un mensaje en español en vez de crecer sin
-  límite.
+  límite. El manifiesto que se lee durante el descubrimiento y en «Probar
+  conexión» tiene además un presupuesto total de 2 s: un anunciante mDNS o un
+  servidor que gotee bytes no puede retener la búsqueda durante horas.
 - El descubrimiento solo acepta un manifiesto que declare `"name":"EcoStation"`
   y `"start_url"`, y fija la dirección tras el primer token de feed.
 

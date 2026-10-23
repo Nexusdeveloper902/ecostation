@@ -29,6 +29,8 @@ class HceResponderTest {
         window: EnrollmentWindow = EnrollmentWindow(),
         cred: String = ApduProtocolTest.VECTOR_CRED,
         authenticated: (() -> Unit)? = null,
+        adopting: (() -> Unit)? = null,
+        adoptFailed: (() -> Unit)? = null,
         adopted: (() -> Unit)? = null,
     ) = HceResponder(
         keys,
@@ -36,6 +38,8 @@ class HceResponderTest {
         credentialId = { cred },
         clockMs = { now },
         onAuthenticated = authenticated,
+        onAdopting = adopting,
+        onAdoptFailed = adoptFailed,
         onAdopted = adopted,
     )
 
@@ -228,6 +232,45 @@ class HceResponderTest {
                 .mac(cred, ApduProtocol.challengeMessage(cred, hex(ApduProtocolTest.VECTOR_NONCE))),
             r.respond(challenge(ApduProtocolTest.VECTOR_NONCE)).sliceArray(17 until 49),
         )
+    }
+
+    @Test
+    fun the_adoption_flag_is_set_before_the_store_and_rolled_back_on_refusal() {
+        val cred = ApduProtocolTest.VECTOR_CRED
+        val events = ArrayList<String>()
+        val keys = InMemoryCredentialKeyStore().apply {
+            put(cred, ByteArray(32) { 0x10 })
+            onAdopt = { events.add("store.adopt") }
+        }
+        val window = EnrollmentWindow().apply { open(cred, ByteArray(32) { 0x20 }, now) }
+        val r = responder(
+            keys,
+            window,
+            adopting = { events.add("flag.sent") },
+            adoptFailed = { events.add("flag.rollback") },
+        )
+        r.respond(select)
+        val enrolled = r.respond(enroll)
+        assertArrayEquals(hex("9000"), enrolled.takeLast(2).toByteArray())
+        // Fail-safe order: the UI flag is on BEFORE the import can block/fail.
+        assertEquals(listOf("flag.sent", "store.adopt"), events)
+
+        val refusedEvents = ArrayList<String>()
+        val refusing = InMemoryCredentialKeyStore().apply {
+            put(cred, ByteArray(32) { 0x30 })
+            adoptResult = false
+            onAdopt = { refusedEvents.add("store.adopt") }
+        }
+        val second = EnrollmentWindow().apply { open(cred, ByteArray(32) { 0x40 }, now) }
+        val refused = responder(
+            refusing,
+            second,
+            adopting = { refusedEvents.add("flag.sent") },
+            adoptFailed = { refusedEvents.add("flag.rollback") },
+        )
+        refused.respond(select)
+        assertArrayEquals(hex("6985"), refused.respond(enroll))
+        assertEquals(listOf("flag.sent", "store.adopt", "flag.rollback"), refusedEvents)
     }
 
     @Test
