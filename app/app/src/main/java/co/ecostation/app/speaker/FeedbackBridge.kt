@@ -121,6 +121,10 @@ class FeedbackBridge(
 
                 status("servidor $endpoint: iniciando sesión…")
                 val ticket = sessionFor(email, password).ticket(endpoint)
+                // The first backend that hands over a feed token becomes the
+                // pinned address: a later mDNS/probe answer must not redirect
+                // the station password somewhere else.
+                if (settings.serverAddress.isNullOrBlank()) settings.serverAddress = endpoint.toString()
                 val ws = WsClient.connect(ticket.wsUrl)
                 client = ws
                 if (!running.get()) {
