@@ -68,6 +68,12 @@ class RecyclingClassificationController extends Controller
                 'message' => __('api.classifier_unavailable'),
                 'detail' => $e->getMessage(),
             ], 503);
+        } catch (\Throwable $e) {
+            // Any other classification-path failure must not leave the
+            // newly stored image behind; the error still surfaces.
+            Storage::disk('local')->delete($storedPath);
+
+            throw $e;
         }
 
         if ($result['duplicate']) {

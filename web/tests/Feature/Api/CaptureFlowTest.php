@@ -6,9 +6,11 @@ use App\Contracts\MaterialClassifier;
 use App\Enums\PendingCaptureState;
 use App\Models\PendingCapture;
 use App\Models\PointsLedger;
+use App\Models\PresenceEvent;
 use App\Models\Reader;
 use App\Models\RecyclingDeposit;
 use App\Models\RecyclingUpdate;
+use App\Services\Recycling\ClassificationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -135,6 +137,68 @@ class CaptureFlowTest extends TestCase
         $this->assertContains(RecyclingUpdate::TYPE_VALIDATED, $types);
         $this->assertContains(RecyclingUpdate::TYPE_POINTS_AWARDED, $types);
         $this->assertContains(RecyclingUpdate::TYPE_LEADERBOARD_UPDATED, $types);
+    }
+
+    #[Test]
+    public function a_classifier_failure_releases_the_capture_for_a_retry_of_the_same_image(): void
+    {
+        $flaky = new class implements MaterialClassifier
+        {
+            public int $calls = 0;
+
+            public function classify(string $imagePath): array
+            {
+                $this->calls++;
+
+                if ($this->calls === 1) {
+                    throw ClassificationException::driverUnavailable('stub', 'timeout transitorio');
+                }
+
+                return ['material_class' => 'plastic', 'confidence' => 0.9, 'is_bottle' => true, 'is_recyclable' => true];
+            }
+        };
+        $this->swap(MaterialClassifier::class, $flaky);
+
+        $captureId = $this->post('/api/v1/recycling/capture', [
+            'image' => UploadedFile::fake()->image('bottle.jpg'),
+        ], ['Authorization' => 'Bearer '.$this->readerToken()])
+            ->json('capture_id');
+
+        $capture = PendingCapture::findOrFail($captureId);
+        $storedPath = $capture->image_path;
+        $eventsBefore = PresenceEvent::count();
+
+        // First association: the classifier 503s. Nothing may be awarded
+        // and the capture must be usable again with the SAME id/image.
+        $this->postJson("/api/v1/recycling/captures/{$captureId}/associate", [
+            'credential_uid' => $this->cardUidFor('Maria González'),
+        ], ['Authorization' => 'Bearer '.$this->readerToken()])
+            ->assertStatus(503);
+
+        $capture->refresh();
+        $this->assertSame(PendingCaptureState::AwaitingCard, $capture->state);
+        $this->assertNull($capture->event_id);
+        $this->assertNull($capture->card_id);
+        $this->assertSame($eventsBefore, PresenceEvent::count(), 'the orphan event must be rolled back');
+        $this->assertSame(0, RecyclingDeposit::count());
+        $this->assertSame(0, PointsLedger::count());
+        Storage::disk('local')->assertExists($storedPath);
+
+        // Second association of the same capture succeeds: one award.
+        $this->postJson("/api/v1/recycling/captures/{$captureId}/associate", [
+            'credential_uid' => $this->cardUidFor('Maria González'),
+        ], ['Authorization' => 'Bearer '.$this->readerToken()])
+            ->assertOk()
+            ->assertJson(['status' => 'ok', 'capture_state' => 'accepted', 'points_awarded' => 10]);
+
+        $capture->refresh();
+        $this->assertSame(PendingCaptureState::Accepted, $capture->state);
+        $this->assertNotNull($capture->event_id);
+        $this->assertSame(2, $flaky->calls);
+        $this->assertSame($eventsBefore + 1, PresenceEvent::count());
+        $this->assertSame(1, RecyclingDeposit::count());
+        $this->assertSame(1, PointsLedger::count());
+        $this->assertSame(10, (int) PointsLedger::sum('delta'));
     }
 
     #[Test]

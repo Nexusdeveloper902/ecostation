@@ -4,6 +4,7 @@ namespace App\Services\Recycling\Drivers;
 
 use App\Contracts\MaterialClassifier;
 use App\Enums\MaterialClass;
+use App\Services\Recycling\ClassificationException;
 
 /**
  * Deterministic per-image stub classifier (the default driver): the class
@@ -15,7 +16,7 @@ class StubClassifier implements MaterialClassifier
     public function classify(string $imagePath): array
     {
         if (! is_file($imagePath) || ! is_readable($imagePath)) {
-            throw new \RuntimeException("StubClassifier: image not readable at [{$imagePath}]");
+            throw ClassificationException::driverUnavailable('stub', "image not readable at [{$imagePath}]");
         }
 
         $hash = hash_file('sha256', $imagePath);

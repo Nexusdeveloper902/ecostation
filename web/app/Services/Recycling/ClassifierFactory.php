@@ -4,6 +4,7 @@ namespace App\Services\Recycling;
 
 use App\Contracts\MaterialClassifier;
 use App\Services\Recycling\Drivers\DeepSeekClassifier;
+use App\Services\Recycling\Drivers\FailingClassifier;
 use App\Services\Recycling\Drivers\StubClassifier;
 
 /**
@@ -23,12 +24,9 @@ class ClassifierFactory
                 (string) config('ecostation.classifier.deepseek.model', 'deepseek-flash'),
                 (float) config('ecostation.classifier.deepseek.timeout'),
             ),
-            // A typo'd RECYCLING_CLASSIFIER_DRIVER must surface as the
-            // standard classifier failure (HTTP 503), not an unhandled 500.
-            default => throw ClassificationException::driverUnavailable(
-                'factory',
-                "unknown classifier driver [{$driver}] (expected stub | deepseek)",
-            ),
+            // A typo'd RECYCLING_CLASSIFIER_DRIVER is a runtime classifier
+            // failure (HTTP 503), never a container/controller 500.
+            default => new FailingClassifier((string) $driver),
         };
     }
 }

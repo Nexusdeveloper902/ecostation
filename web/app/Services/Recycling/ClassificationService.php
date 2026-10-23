@@ -66,7 +66,22 @@ class ClassificationService
         // The (potentially slow, network-bound) judgment runs OUTSIDE any
         // transaction.
         $result = $this->classifier->classify($imagePath);
-        $material = MaterialClass::from($result['material_class']);
+
+        // Driver output is untrusted: a typo'd class must become the
+        // standard retryable classifier failure, never a ValueError 500.
+        $rawClass = $result['material_class'] ?? null;
+        $material = is_string($rawClass) ? MaterialClass::tryFrom($rawClass) : null;
+
+        if ($material === null) {
+            throw ClassificationException::driverUnavailable(
+                'classifier',
+                'invalid material_class ['.(is_scalar($rawClass) ? (string) $rawClass : gettype($rawClass)).']',
+            );
+        }
+
+        if (! is_numeric($result['confidence'] ?? null)) {
+            throw ClassificationException::driverUnavailable('classifier', 'missing or non-numeric confidence');
+        }
 
         // The denormalized event class is the class-scoping key the
         // realtime feed and teacher views filter on.

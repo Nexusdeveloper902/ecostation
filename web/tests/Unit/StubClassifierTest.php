@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Enums\MaterialClass;
+use App\Services\Recycling\ClassificationException;
 use App\Services\Recycling\Drivers\StubClassifier;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -64,9 +65,9 @@ class StubClassifierTest extends TestCase
     }
 
     #[Test]
-    public function throws_for_missing_files(): void
+    public function throws_a_classification_exception_for_missing_files(): void
     {
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(ClassificationException::class);
         $this->classifier->classify('/nonexistent/image.png');
     }
 

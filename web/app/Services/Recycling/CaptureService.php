@@ -188,19 +188,60 @@ class CaptureService
 
         // The single award path — atomic deposit+ledger, frames inside.
         // The capture flip rides the SAME transaction via the callback.
-        $result = $this->classification->classifyAndAward(
-            $reader,
-            $event,
-            (string) Storage::disk('local')->path((string) $capture->image_path),
-            $capture->image_path,
-            function () use ($capture) {
-                PendingCapture::whereKey($capture->id)->update([
-                    'state' => PendingCaptureState::Accepted->value,
-                ]);
-            },
-        );
+        try {
+            $result = $this->classification->classifyAndAward(
+                $reader,
+                $event,
+                (string) Storage::disk('local')->path((string) $capture->image_path),
+                $capture->image_path,
+                function () use ($capture) {
+                    PendingCapture::whereKey($capture->id)->update([
+                        'state' => PendingCaptureState::Accepted->value,
+                    ]);
+                },
+            );
+        } catch (ClassificationException $e) {
+            // The device may retry the SAME capture. Release the claim and
+            // remove the just-created event when no deposit exists (no
+            // points moved). Then let the controller answer 503.
+            $this->releaseAfterClassificationFailure($capture, $event);
+
+            throw $e;
+        }
 
         return ['ok' => true, 'capture' => $capture->refresh(), 'result' => $result];
+    }
+
+    /**
+     * Undo transaction A after a classifier failure: the capture returns
+     * to `awaiting_card` with no event, and the orphan event (never
+     * awarded) is deleted. A deposit, if one somehow exists, wins and the
+     * capture stays accepted.
+     */
+    private function releaseAfterClassificationFailure(PendingCapture $capture, PresenceEvent $event): void
+    {
+        DB::transaction(function () use ($capture, $event): void {
+            $locked = PendingCapture::whereKey($capture->id)->lockForUpdate()->first();
+
+            if ($locked === null) {
+                return;
+            }
+
+            if (RecyclingDeposit::where('event_id', $event->id)->exists()) {
+                $locked->update(['state' => PendingCaptureState::Accepted->value]);
+
+                return;
+            }
+
+            $locked->update([
+                'state' => PendingCaptureState::AwaitingCard->value,
+                'event_id' => null,
+                'card_id' => null,
+            ]);
+
+            // No deposit, no ledger: the event is pure residue.
+            PresenceEvent::whereKey($event->id)->delete();
+        });
     }
 
     /**

@@ -57,9 +57,9 @@ class RecyclingCaptureController extends Controller
                 $request->validated('hce_mac'),
             );
         } catch (ClassificationException $e) {
-            // Driver-level failure: the capture is left in `validating` —
-            // the sweep repairs it; devices may retry the same capture
-            // with the same card. No points moved.
+            // Driver-level failure: CaptureService released the capture
+            // back to `awaiting_card` (orphan event removed, no points
+            // moved). The device may retry this same capture id.
             return response()->json([
                 'status' => 'error',
                 'message' => __('api.classifier_unavailable'),

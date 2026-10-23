@@ -131,6 +131,37 @@ class ClassificationTest extends TestCase
     }
 
     #[Test]
+    public function an_invalid_classifier_driver_answers_503_not_500_and_awards_nothing(): void
+    {
+        config(['ecostation.classifier.driver' => 'bogus']);
+
+        $event = $this->recyclingTapFor('Maria González');
+
+        $this->postSigned('/api/v1/recycling/classify', $event->id)
+            ->assertStatus(503)
+            ->assertJson(['status' => 'error']);
+
+        $this->assertDatabaseCount('recycling_deposits', 0);
+        $this->assertDatabaseCount('points_ledger', 0);
+    }
+
+    #[Test]
+    public function an_invalid_material_class_from_the_classifier_is_a_503_and_leaves_no_orphan_image(): void
+    {
+        Storage::fake('local');
+
+        $this->fakeClassifier(['material_class' => 'unobtainium', 'confidence' => 0.9]);
+
+        $event = $this->recyclingTapFor('Maria González');
+
+        $this->postSigned('/api/v1/recycling/classify', $event->id)
+            ->assertStatus(503);
+
+        $this->assertSame(0, RecyclingDeposit::count());
+        $this->assertSame([], Storage::disk('local')->allFiles('recycling-captures'));
+    }
+
+    #[Test]
     public function an_invalid_bearer_token_is_rejected(): void
     {
         $event = $this->recyclingTapFor('Maria González');
