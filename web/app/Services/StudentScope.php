@@ -70,9 +70,18 @@ class StudentScope
         return $this->classIds;
     }
 
-    /** Class-id filter for raw query builders (null = no filter / unrestricted). */
+    /**
+     * Class-id filter for raw query builders (null = no filter /
+     * unrestricted). A student-account scope returns an EMPTY array:
+     * callers filtering by class must fail closed, never widen to all
+     * rows just because the scope is student-shaped.
+     */
     public function classIdFilter(): ?array
     {
+        if ($this->studentId !== null) {
+            return [];
+        }
+
         return $this->classIds?->values()->all();
     }
 

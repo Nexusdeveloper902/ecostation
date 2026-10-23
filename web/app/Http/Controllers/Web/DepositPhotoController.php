@@ -26,8 +26,14 @@ class DepositPhotoController extends Controller
         $deposit->loadMissing('event.card.student');
         $student = $deposit->event?->card?->student;
 
+        // A historical artifact is scoped by the class SNAPSHOT on the
+        // event, not by where the student sits today: a transfer must
+        // never move old photos between teachers.
+        $classId = $deposit->event?->class_id !== null ? (int) $deposit->event->class_id : null;
+
         abort_if(
-            $student === null || ! StudentScope::forUser($request->user())->allowsStudent($student),
+            $student === null
+            || ! StudentScope::forUser($request->user())->allows((int) $student->id, $classId),
             404,
             __('api.deposit_photo_missing'),
         );

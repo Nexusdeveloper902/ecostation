@@ -110,6 +110,32 @@ class RealtimeFeedTest extends TestCase
     }
 
     #[Test]
+    public function the_class_snapshot_is_the_events_class_not_the_students_current_one(): void
+    {
+        $maria = $this->cardOf('Maria González');
+        $classA = (int) $maria->student->class_id;
+        $classB = (int) $this->cardOf('Diego López')->student->class_id;
+
+        $event = PresenceEvent::create([
+            'card_id' => $maria->id,
+            'reader_id' => $this->reader()->id,
+            'class_id' => $classA,
+            'occurred_at' => now(),
+        ]);
+
+        // The student moves to 5° B AFTER the historical tap.
+        $maria->student->update(['class_id' => $classB]);
+
+        $rows = (new RealtimeFeed)->recent(20);
+
+        $this->assertSame($classA, $rows[0]['class_id'], 'la fila conserva el curso del evento');
+        $this->assertSame('5° A', $rows[0]['class_name']);
+
+        $this->assertSame([], (new RealtimeFeed)->recent(20, [$classB]));
+        $this->assertSame([$event->id], array_column((new RealtimeFeed)->recent(20, [$classA]), 'id'));
+    }
+
+    #[Test]
     public function latest_event_id_tracks_the_head(): void
     {
         $feed = new RealtimeFeed;

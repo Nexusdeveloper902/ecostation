@@ -100,5 +100,8 @@ class StudentScopeTest extends TestCase
         $this->assertTrue($scope->allowsStudent($maria));
         $this->assertFalse($scope->allowsStudent(Student::where('name', 'Carlos Pérez')->firstOrFail()));
         $this->assertSame([$maria->id], $scope->students()->pluck('id')->all());
+        // A student scope is not "unrestricted" for raw builders either:
+        // callers receive an empty filter (fail closed, never all rows).
+        $this->assertSame([], $scope->classIdFilter());
     }
 }

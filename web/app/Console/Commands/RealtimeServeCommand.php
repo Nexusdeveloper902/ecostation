@@ -269,7 +269,7 @@ class RealtimeServeCommand extends Command
             )),
             'recycling' => \array_values(\array_filter(
                 $this->recycling->recent((int) config('realtime.history_limit')),
-                fn (array $row): bool => $this->clientSeesRecycling($client, $row['payload']),
+                fn (array $row): bool => $this->clientSeesRecycling($client, (string) $row['type'], $row['payload']),
             )),
         ];
 
@@ -347,8 +347,15 @@ class RealtimeServeCommand extends Command
             && in_array((int) $row['class_id'], $client['class_ids'] ?? [], true);
     }
 
+    /**
+     * Tipos sin datos de estudiante que un docente puede recibir aunque
+     * el payload no traiga `class_id`. Cualquier otro tipo sin curso es
+     * solo para admin/estación: un nombre nunca cruza la pared.
+     */
+    private const CLASS_FREE_TYPES = ['capture_created', 'leaderboard_updated'];
+
     /** @param  array<string, mixed>  $payload */
-    private function clientSeesRecycling(array $client, array $payload): bool
+    private function clientSeesRecycling(array $client, string $type, array $payload): bool
     {
         if ($client['role'] === UserRole::Admin->value || $client['role'] === UserRole::Station->value) {
             return true;
@@ -359,7 +366,8 @@ class RealtimeServeCommand extends Command
         }
 
         if (! \array_key_exists('class_id', $payload)) {
-            return true; // capture_created / leaderboard_updated: todos
+            // Fail closed: only explicitly safe, student-free types.
+            return in_array($type, self::CLASS_FREE_TYPES, true);
         }
 
         return $payload['class_id'] !== null
@@ -439,7 +447,7 @@ class RealtimeServeCommand extends Command
                 JSON_UNESCAPED_UNICODE,
             ));
             foreach ($this->clients as $clientId => $client) {
-                if ($client['handshook'] && $this->clientSeesRecycling($client, $update['payload'])) {
+                if ($client['handshook'] && $this->clientSeesRecycling($client, (string) $update['type'], $update['payload'])) {
                     $this->write($clientId, $frame);
                 }
             }

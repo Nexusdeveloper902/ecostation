@@ -217,12 +217,15 @@ class RecyclingReportService
             ->join('events as e', 'e.id', '=', 'd.event_id')
             ->join('cards as c', 'c.id', '=', 'e.card_id')
             ->join('students as s', 's.id', '=', 'c.student_id')
-            ->leftJoin('classes as cl', 'cl.id', '=', 's.class_id')
+            // Historical artifacts follow the class at tap time, not the
+            // student's current enrolment: reports and exports stay
+            // attached to the class that actually produced them.
+            ->leftJoin('classes as cl', 'cl.id', '=', 'e.class_id')
             ->leftJoin('readers as r', 'r.id', '=', 'e.reader_id')
             ->whereBetween('e.occurred_at', [
                 Carbon::parse($from)->startOfDay(),
                 Carbon::parse($to)->endOfDay(),
             ])
-            ->when($classIds !== null, fn ($query) => $query->whereIn('s.class_id', $classIds));
+            ->when($classIds !== null, fn ($query) => $query->whereIn('e.class_id', $classIds));
     }
 }

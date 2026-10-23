@@ -48,10 +48,14 @@ final class RealtimeFeed
      */
     private function rows(int $limit, string $direction, bool $reverse, ?int $afterId, ?array $classIds): array
     {
+        // The event row carries the class SNAPSHOT of the tap. Historical
+        // rows keep meaning even after a student transfers, so both the
+        // join and the filter use events.class_id, never the student's
+        // current enrolment.
         $query = DB::table('events')
             ->join('cards', 'cards.id', '=', 'events.card_id')
             ->join('students', 'students.id', '=', 'cards.student_id')
-            ->leftJoin('classes', 'classes.id', '=', 'students.class_id')
+            ->leftJoin('classes', 'classes.id', '=', 'events.class_id')
             ->leftJoin('readers', 'readers.id', '=', 'events.reader_id');
 
         if ($afterId !== null) {
@@ -59,7 +63,7 @@ final class RealtimeFeed
         }
 
         if ($classIds !== null) {
-            $query->whereIn('students.class_id', $classIds);
+            $query->whereIn('events.class_id', $classIds);
         }
 
         $rows = $query
@@ -70,7 +74,7 @@ final class RealtimeFeed
                 'events.occurred_at',
                 'students.id as student_id',
                 'students.name as student_name',
-                'students.class_id as class_id',
+                'events.class_id as class_id',
                 'classes.name as class_name',
                 'readers.label as reader_label',
             ])

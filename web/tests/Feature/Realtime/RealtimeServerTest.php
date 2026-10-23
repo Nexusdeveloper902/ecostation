@@ -361,6 +361,71 @@ class RealtimeServerTest extends TestCase
         fclose($admin);
     }
 
+    #[Test]
+    public function validation_started_is_scoped_by_the_events_class_snapshot(): void
+    {
+        config(['app.key' => self::APP_KEY]);
+
+        $db = $this->freshFileDatabase();
+        $teacherId = $this->seedUser($db, 'teacher');
+        $classA = $this->seedClass($db, $teacherId, '5° A Live');
+        $classB = $this->seedClass($db, $this->seedUser($db, 'teacher'), '5° B Live');
+
+        $port = $this->startServer($db);
+        $this->assertNotNull($port, 'realtime:serve no arrancó');
+
+        [$teacher] = $this->upgrade($port, RealtimeToken::issue($teacherId, time() + 120));
+        $this->readMessage($teacher); // hello
+
+        // Diego (5° B) empieza una validación: el docente de 5° A no
+        // recibe NADA, ni siquiera el nombre del estudiante.
+        $this->seedRecyclingUpdate($db, 'validation_started', [
+            'capture_id' => 1,
+            'event_id' => 1,
+            'student_id' => 2,
+            'student_name' => 'Diego López',
+            'class_id' => $classB,
+        ]);
+
+        // Un frame legado sin class_id tampoco cruza la pared.
+        $this->seedRecyclingUpdate($db, 'validation_started', [
+            'capture_id' => 2,
+            'event_id' => 2,
+            'student_id' => 2,
+            'student_name' => 'Diego López',
+        ]);
+
+        usleep(400000);
+        $this->assertNull($this->readMessageIfAny($teacher, 0.7), 'sin class_id o de otro curso: no llega');
+
+        // El mismo tipo con el curso del docente sí llega.
+        $this->seedRecyclingUpdate($db, 'validation_started', [
+            'capture_id' => 3,
+            'event_id' => 3,
+            'student_id' => 1,
+            'student_name' => 'Maria González',
+            'class_id' => $classA,
+        ]);
+
+        $own = $this->readMessage($teacher);
+        $this->assertNotNull($own);
+        $this->assertSame('validation_started', $own['update']['type']);
+        $this->assertSame($classA, $own['update']['payload']['class_id']);
+
+        // Los tipos sin datos de estudiante siguen siendo globales.
+        $this->seedRecyclingUpdate($db, 'capture_created', [
+            'capture_id' => 4,
+            'reader_id' => 1,
+            'state' => 'awaiting_card',
+        ]);
+
+        $capture = $this->readMessage($teacher);
+        $this->assertNotNull($capture);
+        $this->assertSame('capture_created', $capture['update']['type']);
+
+        fclose($teacher);
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private function freshFileDatabase(): string

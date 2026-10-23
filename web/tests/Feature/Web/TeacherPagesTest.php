@@ -6,6 +6,7 @@ use App\Enums\MaterialClass;
 use App\Models\PointsLedger;
 use App\Models\RecyclingDeposit;
 use App\Models\Student;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use PHPUnit\Framework\Attributes\Test;
@@ -55,6 +56,21 @@ class TeacherPagesTest extends TestCase
     private function classId(string $name): int
     {
         return (int) Student::where('name', $name)->firstOrFail()->class_id;
+    }
+
+    private function teacherOf(int $classId, string $email): User
+    {
+        $teacher = User::forceCreate([
+            'name' => 'Docente '.$email,
+            'email' => $email,
+            'password' => 'password',
+            'role' => 'teacher',
+            'must_change_password' => false,
+        ]);
+
+        $teacher->classes()->attach($classId);
+
+        return $teacher;
     }
 
     #[Test]
@@ -159,6 +175,28 @@ class TeacherPagesTest extends TestCase
             ->assertOk()
             ->assertViewHas('recent', fn ($rows) => count($rows) === 1)
             ->assertViewHas('realtimeTokenUrl', route('realtime.token'));
+    }
+
+    #[Test]
+    public function exports_use_the_events_class_snapshot_after_a_transfer(): void
+    {
+        $this->depositFor('Maria González', MaterialClass::Plastic, 10);
+
+        $maria = Student::where('name', 'Maria González')->firstOrFail();
+        $classB = $this->classId('Diego López');
+
+        // The student transfers to 5° B after the historical 5° A deposit.
+        $maria->update(['class_id' => $classB]);
+
+        $own = $this->actingAs($this->teacher())->get('/teacher/export.csv');
+        $own->assertOk();
+        $this->assertStringContainsString('Maria González', $own->streamedContent());
+        $this->assertStringContainsString('5° A', $own->streamedContent());
+
+        $otherTeacher = $this->teacherOf($classB, 'docente-b@ecostation.test');
+        $other = $this->actingAs($otherTeacher)->get('/teacher/export.csv');
+        $other->assertOk();
+        $this->assertStringNotContainsString('Maria González', $other->streamedContent());
     }
 
     #[Test]

@@ -169,6 +169,9 @@ class CaptureService
                     'event_id' => $event->id,
                     'student_id' => $student->id,
                     'student_name' => $student->name,
+                    // The class SNAPSHOT lives on the event; the feed
+                    // must never leak a name to teachers of other classes.
+                    'class_id' => $event->class_id !== null ? (int) $event->class_id : null,
                     'state' => PendingCaptureState::Validating->value,
                 ]);
 

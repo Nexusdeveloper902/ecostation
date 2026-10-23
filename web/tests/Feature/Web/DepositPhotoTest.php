@@ -95,7 +95,45 @@ class DepositPhotoTest extends TestCase
         $this->actingAs($student)->get("/deposits/{$own->id}/photo")->assertForbidden();
     }
 
+    #[Test]
+    public function a_historical_photo_uses_the_events_class_snapshot(): void
+    {
+        $maria = Student::where('name', 'Maria González')->firstOrFail();
+        $classA = (int) $maria->class_id;
+        $classB = (int) Student::where('name', 'Diego López')->firstOrFail()->class_id;
+
+        $deposit = $this->depositWithPhotoFor('Maria González');
+
+        // After the event, the student moves to 5° B.
+        $maria->update(['class_id' => $classB]);
+
+        // The teacher of the class where the tap happened keeps access.
+        $this->actingAs($this->teacher())->get("/deposits/{$deposit->id}/photo")->assertOk();
+
+        // The teacher of the NEW class cannot see a historical 5° A photo.
+        $this->actingAs($this->teacherOf($classB, 'docente-b@ecostation.test'))
+            ->get("/deposits/{$deposit->id}/photo")
+            ->assertNotFound();
+
+        $this->assertNotSame($classA, $classB);
+    }
+
     // ---------------------------------------------------------------- helpers
+
+    private function teacherOf(int $classId, string $email): User
+    {
+        $teacher = User::forceCreate([
+            'name' => 'Docente '.$email,
+            'email' => $email,
+            'password' => 'password',
+            'role' => 'teacher',
+            'must_change_password' => false,
+        ]);
+
+        $teacher->classes()->attach($classId);
+
+        return $teacher;
+    }
 
     private function depositWithPhotoFor(string $name, ?string $occurredAt = null, int $points = 10): RecyclingDeposit
     {
