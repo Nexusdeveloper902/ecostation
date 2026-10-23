@@ -54,6 +54,42 @@ pio test -e native                               # pruebas de host, sin placa
 `secrets.h` es local y está en `.gitignore`: **nunca se commitea**. Si no
 existe, el build compila con `secrets.h.example` y avisa por `#warning`.
 
+## Verificación E2E contra `web/` (sin placa)
+
+`scripts/e2e_web.sh` habla con la app real de `web/` usando las cargas y la
+firma del propio firmware. Crea una base SQLite desechable, siembra el
+`DemoSeeder`, arranca `artisan serve` en el puerto 8177 y recorre 13 casos
+firmados: tap conocido, clasificación, tarjeta desconocida, clave
+equivocada, nonce repetido, captura «botella primero», asociación (y su
+repetición) y los cinco de emparejamiento. Cada respuesta real pasa por el
+`ResponseParser` del firmware; el guion termina con `RESULTADO: E2E OK`
+solo si los 13 veredictos son correctos.
+
+```bash
+cd firmware
+pio test -e native                        # deja ArduinoJson en .pio/libdeps/native
+WEB=../web ./scripts/e2e_web.sh           # o WEB=/ruta/a/web
+E2E_PORT=8188 ./scripts/e2e_web.sh        # otro puerto
+```
+
+Requisitos: `g++`, `curl` y PHP con GD. No lee ni modifica `web/.env`:
+todo va por entorno (`APP_KEY`, `DB_*`, `CACHE_STORE=database`,
+`RECYCLING_CLASSIFIER_DRIVER=stub`, `PAIRING_WINDOW_SECONDS=45`). Si `web/`
+no existe, sale con código 2 y `web/ no encontrado`; si le faltan
+dependencias, con `web/ sin dependencias: ejecuta ./run setup en web/`.
+
+Las tres herramientas de `tools/e2e/` se compilan con `g++ -std=gnu++17`
+contra `lib/StationCore`:
+
+- `device_request` — arma UNA petición firmada e imprime por stdout el
+  `Authorization` y el `Content-Type`; el cuerpo va a un fichero.
+  Modos `json`, `capture` y `classify`, con `--nonce <hex>` opcional.
+- `build_payloads` — escribe los cuerpos JSON exactos del dispositivo
+  (tap, emparejar y asociar).
+- `verify_responses` — juzga las respuestas reales con el parser del
+  firmware (`tap`, `pair`, `capture` y `status`) y sale 0 solo si todas
+  pasan.
+
 ## Estructura
 
 ```text
@@ -74,8 +110,8 @@ firmware/
 │   ├── main.cpp              # setup()/loop()
 │   └── station.{h,cpp}       # raíz de composición de la estación
 ├── test/                     # suite Unity del entorno native
-├── tools/e2e/                # herramientas del e2e contra web/ (Tarea 10)
-└── scripts/e2e_web.sh        # guion e2e (Tarea 10)
+├── tools/e2e/                # device_request, build_payloads, verify_responses
+└── scripts/e2e_web.sh        # e2e firmado contra web/ (13 casos)
 ```
 
 `lib/StationCore` no incluye cabeceras de Arduino: HCE, firma, payloads,
