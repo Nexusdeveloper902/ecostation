@@ -71,7 +71,10 @@ class TapService
     {
         if ($clientTimestamp !== null) {
             try {
-                return Carbon::parse($clientTimestamp);
+                // Devices may send UTC (`Z`) or a numeric offset. Store the
+                // app-timezone wall clock so SQLite comparisons and the
+                // API's -05:00 rendering agree.
+                return Carbon::parse($clientTimestamp)->setTimezone((string) config('app.timezone'));
             } catch (\Throwable) {
                 // A device with a broken clock must never lose the tap.
             }

@@ -3,6 +3,8 @@
 namespace Tests\Feature\Api;
 
 use App\Models\PresenceEvent;
+use App\Models\RecyclingDeposit;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -129,6 +131,37 @@ class TapEventTest extends TestCase
             'occurred_at should use the client timestamp (within tolerance).'
         );
         $this->assertSame($clientTime, $event->metadata['client_timestamp']);
+    }
+
+    #[Test]
+    public function a_utc_client_timestamp_is_stored_and_returned_in_bogota_time(): void
+    {
+        $this->tap([
+            'credential_uid' => $this->cardUidFor('Maria González'),
+            'client_timestamp' => '2026-10-23T12:00:00Z',
+        ])->assertOk();
+
+        // Stored with the app timezone's wall clock (UTC-5), not UTC.
+        $this->assertDatabaseHas('events', ['occurred_at' => '2026-10-23 07:00:00']);
+
+        $event = PresenceEvent::firstOrFail();
+        $this->assertSame('2026-10-23 07:00:00', $event->occurred_at->format('Y-m-d H:i:s'));
+
+        RecyclingDeposit::create([
+            'event_id' => $event->id,
+            'material_class' => 'plastic',
+            'confidence' => 0.9,
+            'points_awarded' => 10,
+            'is_bottle' => true,
+            'is_recyclable' => true,
+        ]);
+
+        $user = User::where('email', 'maria@ecostation.test')->firstOrFail();
+        $token = $user->createToken('zona-horaria')->plainTextToken;
+
+        $this->withToken($token)->getJson('/api/v1/me/history')
+            ->assertOk()
+            ->assertJsonPath('data.0.occurred_at', '2026-10-23T07:00:00-05:00');
     }
 
     #[Test]

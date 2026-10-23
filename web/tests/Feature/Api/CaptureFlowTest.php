@@ -254,6 +254,15 @@ class CaptureFlowTest extends TestCase
     }
 
     #[Test]
+    public function a_non_numeric_capture_id_is_404_not_500(): void
+    {
+        $this->postJson('/api/v1/recycling/captures/abc/associate', [
+            'credential_uid' => $this->cardUidFor('Maria González'),
+        ], ['Authorization' => 'Bearer '.$this->readerToken()])
+            ->assertNotFound();
+    }
+
+    #[Test]
     public function another_readers_capture_cannot_be_associated(): void
     {
         $captureId = $this->post('/api/v1/recycling/capture', [

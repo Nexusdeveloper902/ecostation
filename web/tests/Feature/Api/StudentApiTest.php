@@ -7,6 +7,7 @@ use App\Models\RecyclingDeposit;
 use App\Models\Student;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -70,6 +71,21 @@ class StudentApiTest extends TestCase
 
         $this->asStudent($carlosToken)->getJson('/api/v1/me/balance')->assertOk()->assertJsonPath('balance', 0);
         $this->asStudent($carlosToken)->getJson('/api/v1/me/history')->assertOk()->assertJsonCount(0, 'data');
+    }
+
+    #[Test]
+    public function history_reports_an_unknown_stored_material_as_null_instead_of_throwing(): void
+    {
+        $deposit = $this->classifiedDepositFor('Maria González', 'plastic', 10);
+
+        // Simulate a legacy/corrupt row the enum cast cannot represent.
+        DB::table('recycling_deposits')->where('id', $deposit->id)->update(['material_class' => 'unobtainium']);
+
+        $token = $this->mintToken($this->studentAccount('maria')->email)->json('token');
+
+        $this->asStudent($token)->getJson('/api/v1/me/history')
+            ->assertOk()
+            ->assertJsonPath('data.0.material_class', null);
     }
 
     #[Test]

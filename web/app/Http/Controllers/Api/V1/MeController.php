@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\MaterialClass;
 use App\Http\Controllers\Controller;
 use App\Models\RecyclingDeposit;
 use App\Models\Student;
@@ -52,12 +53,25 @@ class MeController extends Controller
             ->through(fn (RecyclingDeposit $deposit) => [
                 'deposit_id' => $deposit->id,
                 'occurred_at' => $deposit->event->occurred_at->toIso8601String(),
-                'material_class' => $deposit->material_class->value,
+                // Read the raw column: a legacy/unknown enum value must
+                // render as null, never throw a ValueError from the cast.
+                'material_class' => $this->materialValue($deposit),
                 'points_awarded' => (int) $deposit->points_awarded,
                 'is_recyclable' => (bool) $deposit->is_recyclable,
             ]);
 
         return response()->json($deposits);
+    }
+
+    private function materialValue(RecyclingDeposit $deposit): ?string
+    {
+        $raw = $deposit->getRawOriginal('material_class');
+
+        if (! is_string($raw)) {
+            return null;
+        }
+
+        return MaterialClass::tryFrom($raw)?->value;
     }
 
     private function student(Request $request): Student

@@ -52,6 +52,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/recycling/capture', [RecyclingCaptureController::class, 'store'])
             ->name('api.v1.recycling.capture');
         Route::post('/recycling/captures/{capture}/associate', [RecyclingCaptureController::class, 'associate'])
+            ->whereNumber('capture')
             ->name('api.v1.recycling.captures.associate');
         Route::post('/admin/cards/pair', [CardPairingController::class, 'store'])->name('api.v1.cards.pair');
     });
