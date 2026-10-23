@@ -11,4 +11,4 @@ Aplicación Laravel 13 (PHP 8.3+, SQLite, Sanctum) de EcoStation. Idioma `es`, z
 
 ## Advertencia: cuenta de demostración
 
-`demo@ecostation.test` / `demo1234` es una cuenta **solo para desarrollo**. Se siembra únicamente en los entornos `local` y `testing`. Cámbiala o elimínala en cualquier entorno compartido.
+Las cuentas de demostración (`admin@ecostation.test`, `docente@ecostation.test`, `estacion@ecostation.test` y una por estudiante, p. ej. `maria@ecostation.test`) usan la clave `password` y son **solo para desarrollo**. Se siembran únicamente en los entornos `local` y `testing`. Cámbiala o elimínala en cualquier entorno compartido.

@@ -24,8 +24,9 @@ case "${1:-}" in
         php artisan migrate --seed --force
         echo
         echo "Credenciales de demostración (solo desarrollo, cámbialas):"
-        echo "  correo: demo@ecostation.test"
-        echo "  clave:  demo1234"
+        echo "  correos: admin@ecostation.test, docente@ecostation.test, estacion@ecostation.test,"
+        echo "           y un estudiante por cuenta (maria@, carlos@, ana@, diego@, lucia@ecostation.test)"
+        echo "  clave:   password"
         ;;
     serve) php artisan serve --host=0.0.0.0 --port=8000 ;; # ponytail: solo web; el feed en tiempo real se añade en la Tarea 15
     test) shift; php artisan test "$@" ;;

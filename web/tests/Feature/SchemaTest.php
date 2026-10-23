@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Enums\UserRole;
 use App\Models\PresenceEvent;
+use App\Models\Reader;
+use App\Models\Student;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Test;
@@ -55,5 +57,14 @@ class SchemaTest extends TestCase
         $tap = $this->recyclingTapFor('Diego');
         $this->assertSame('Diego López', $tap->student->name);
         $this->assertNotNull($tap->class_id);
+    }
+
+    #[Test]
+    public function the_demo_seed_can_run_twice(): void
+    {
+        $this->seedDemo();
+        $this->seedDemo();
+        $this->assertSame(5, Student::count());
+        $this->assertSame(1, Reader::count());
     }
 }

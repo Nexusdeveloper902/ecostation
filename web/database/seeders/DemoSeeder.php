@@ -15,13 +15,13 @@ class DemoSeeder extends Seeder
 {
     public function run(): void
     {
-        $a = SchoolClass::create(['name' => '5° A']);
-        $b = SchoolClass::create(['name' => '5° B']);
+        $a = SchoolClass::firstOrCreate(['name' => '5° A']);
+        $b = SchoolClass::firstOrCreate(['name' => '5° B']);
 
-        User::create(['name' => 'Admin', 'email' => 'admin@ecostation.test', 'password' => 'password', 'role' => UserRole::Admin]);
-        User::create(['name' => 'Docente', 'email' => 'docente@ecostation.test', 'password' => 'password', 'role' => UserRole::Teacher])
-            ->classes()->attach($a->id);
-        User::create(['name' => 'Estación', 'email' => 'estacion@ecostation.test', 'password' => 'password', 'role' => UserRole::Station]);
+        User::firstOrCreate(['email' => 'admin@ecostation.test'], ['name' => 'Admin', 'password' => 'password', 'role' => UserRole::Admin]);
+        User::firstOrCreate(['email' => 'docente@ecostation.test'], ['name' => 'Docente', 'password' => 'password', 'role' => UserRole::Teacher])
+            ->classes()->syncWithoutDetaching([$a->id]);
+        User::firstOrCreate(['email' => 'estacion@ecostation.test'], ['name' => 'Estación', 'password' => 'password', 'role' => UserRole::Station]);
 
         $n = 0;
         foreach ([
@@ -29,20 +29,18 @@ class DemoSeeder extends Seeder
             [$b, ['Diego López', 'Lucía Fernández']],
         ] as [$class, $names]) {
             foreach ($names as $name) {
-                $student = Student::create(['name' => $name, 'class_id' => $class->id]);
-                Card::create(['credential_uid' => 'DEMO-'.(++$n), 'student_id' => $student->id]);
-                User::create([
-                    'name' => $name,
-                    'email' => Str::lower(Str::ascii($student->firstName())).'@ecostation.test',
-                    'password' => 'password',
-                    'role' => UserRole::Student,
-                    'student_id' => $student->id,
-                ]);
+                $student = Student::firstOrCreate(['name' => $name, 'class_id' => $class->id]);
+                Card::firstOrCreate(['credential_uid' => 'DEMO-'.(++$n)], ['student_id' => $student->id]);
+                User::firstOrCreate(
+                    ['email' => Str::lower(Str::ascii($student->firstName())).'@ecostation.test'],
+                    ['name' => $name, 'password' => 'password', 'role' => UserRole::Student, 'student_id' => $student->id],
+                );
             }
         }
 
-        $key = Str::random(32);
-        Reader::create(['label' => 'Estación Demo', 'api_key' => $key]);
-        $this->command?->info("Reader API key (shown once): {$key}");
+        $reader = Reader::firstOrCreate(['label' => 'Estación Demo'], ['api_key' => Str::random(32)]);
+        if ($reader->wasRecentlyCreated) {
+            $this->command?->info("Reader API key (shown once): {$reader->api_key}");
+        }
     }
 }
