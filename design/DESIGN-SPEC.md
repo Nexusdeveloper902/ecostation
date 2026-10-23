@@ -137,6 +137,45 @@ Responsive: below 1024 px the sidebar collapses to the 76 px bottom bar
 (`Componentes / Barra inferior / Estudiante`) and cards stack 1 column; student
 pages must match the `movil-*` boards at 390 px.
 
+Web shell details from the **Web** boards:
+
+- **Sidebar variants** (264 px, all share the logo, user block and logout):
+  - Estudiante: eyebrow `ESTUDIANTE`; Inicio, Historial, Ranking.
+  - Docente: eyebrow `DOCENTE`; Resumen, Estudiantes, En vivo, Exportar;
+    bottom card "Mis cursos" listing the assigned classes.
+  - Admin: eyebrow `SUPERVISIÓN` → Resumen, En vivo; eyebrow `ADMINISTRACIÓN`
+    → Estudiantes y cursos, Vinculación, Estaciones, Personal, Ajustes.
+    Resumen/En vivo reuse the teacher routes (admins are allowed there).
+- **Top bar**: page title H2 + one-line subtitle; right user pill with avatar
+  initials, name and role; admin/teacher role pages also show filter controls
+  (class select, period select with calendar icon) under the title.
+- **Admin · Estudiantes y cursos**: tabs `Todos` + one pill per class with the
+  count, then `+ Nuevo curso`; toolbar with search ("Buscar por nombre o
+  correo"), a `Credencial: todas` filter, `Importar CSV` (outline) and
+  `Nuevo estudiante` (primary). Table columns: Estudiante (avatar, name,
+  email), Curso, Credencial chip, Puntos (mono), action (`Gestionar` outline
+  or `Vincular` primary) + overflow. Credential chips: green `Tarjeta`,
+  `Teléfono`, `Tarjeta + teléfono`; red `Sin vincular`; amber
+  `Pendiente: tocar estación`. Footer "Mostrando N de M".
+- **Admin · Vinculación**: two cards side by side. Left: "1. Elige al
+  estudiante" with search, `Sin vincular (N)` / `Todos` tabs and a scrollable
+  student list (avatar, name, class, "sin credencial", `Armar` outline or
+  `Armado` + green highlight). Right: "2. Acerca la credencial" with the
+  concentric reader graphic, heading "Acerca la tarjeta o el teléfono a
+  cualquier estación", the armed-student explanation, an amber
+  `Esperando toque 0:47` pill and `Cancelar` outline. Success swaps the right
+  card for a green check, student name and the linked credential.
+- **Admin · Estaciones**: table with label, key fingerprint (mono), last
+  event, actions rotate/delete; `Nueva estación` primary; one-time key flash
+  in a warning panel.
+- **Admin · Personal**: name, email, role chip, actions; `Nuevo usuario`.
+- **Admin · Ajustes**: sections for points per material (number inputs with
+  material chips), photo retention days, pairing window; save primary.
+- **Docente · Exportar**: range selector, scope summary, large `Exportar CSV`
+  and `Exportar PDF` cards with format descriptions, recent-export hint.
+- **Docente · En vivo**: feed list of live rows with material dot, student,
+  station, time and status chip; connection status in the header.
+
 ## 7. Screen map — Android (`app/app/src/main`)
 
 | Penpot board (`design/movil/`) | Screen / state |
