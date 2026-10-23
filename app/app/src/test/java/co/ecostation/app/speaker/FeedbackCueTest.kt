@@ -51,8 +51,10 @@ class FeedbackCueTest {
     @Test
     fun localHceExchangeMapsToDetectedOrRejected() {
         assertEquals(FeedbackCue.DETECTED, FeedbackCue.fromHceEvent("RETO -> 9000"))
+        assertEquals(FeedbackCue.DETECTED, FeedbackCue.fromHceEvent("ENROLAR -> 9000"))
         assertEquals(FeedbackCue.REJECTED, FeedbackCue.fromHceEvent("RETO -> error"))
         assertEquals(FeedbackCue.REJECTED, FeedbackCue.fromHceEvent("RETO -> sin llave"))
+        assertNull(FeedbackCue.fromHceEvent("ENROLAR -> error"))
         assertNull(FeedbackCue.fromHceEvent("SELECCIONAR AID -> 9000"))
         assertNull(FeedbackCue.fromHceEvent("Desactivado"))
     }
