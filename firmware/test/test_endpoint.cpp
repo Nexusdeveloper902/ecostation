@@ -88,11 +88,11 @@ static void protocol_txt_gates_future_wires() {
 // The compiled API_BASE_URL fallback parses back into an endpoint.
 static void fallback_base_url_parses() {
     EcoStationEndpoint out =
-        EcoStationEndpoint::fromBaseUrl("http://192.168.1.11:8000");
+        EcoStationEndpoint::fromBaseUrl("http://192.0.2.11:8000");
     TEST_ASSERT_TRUE(out.valid);
-    TEST_ASSERT_EQUAL_STRING("192.168.1.11", out.host.c_str());
+    TEST_ASSERT_EQUAL_STRING("192.0.2.11", out.host.c_str());
     TEST_ASSERT_EQUAL_UINT16(8000, out.port);
-    TEST_ASSERT_EQUAL_STRING("http://192.168.1.11:8000",
+    TEST_ASSERT_EQUAL_STRING("http://192.0.2.11:8000",
                              out.baseUrl().c_str());
 }
 
