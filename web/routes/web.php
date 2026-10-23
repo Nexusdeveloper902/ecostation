@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Controllers\Web\Admin\ClassController as AdminClassController;
+use App\Http\Controllers\Web\Admin\StaffController as AdminStaffController;
+use App\Http\Controllers\Web\Admin\StudentController as AdminStudentController;
 use App\Http\Controllers\Web\AuthController;
 use App\Http\Controllers\Web\DepositPhotoController;
 use App\Http\Controllers\Web\ManifestController;
@@ -84,5 +87,21 @@ Route::middleware('auth')->group(function () {
             ->name('teacher.student.export.csv');
         Route::get('/teacher/students/{student}/export.pdf', [TeacherExportController::class, 'studentPdf'])
             ->name('teacher.student.export.pdf');
+    });
+
+    // Admin desks: admin-only, unstyled forms in this batch.
+    Route::prefix('admin')->name('admin.')->middleware('role:admin')->group(function () {
+        // Roster.
+        Route::get('/students', [AdminStudentController::class, 'index'])->name('students');
+        Route::post('/students', [AdminStudentController::class, 'store'])->name('students.store');
+        Route::post('/students/import', [AdminStudentController::class, 'import'])->name('students.import');
+        Route::delete('/students/{student}', [AdminStudentController::class, 'destroy'])->name('students.destroy');
+
+        Route::get('/classes', [AdminClassController::class, 'index'])->name('classes');
+        Route::post('/classes', [AdminClassController::class, 'store'])->name('classes.store');
+        Route::put('/classes/{class}/teachers', [AdminClassController::class, 'teachers'])->name('classes.teachers');
+
+        Route::get('/staff', [AdminStaffController::class, 'index'])->name('staff');
+        Route::post('/staff', [AdminStaffController::class, 'store'])->name('staff.store');
     });
 });
