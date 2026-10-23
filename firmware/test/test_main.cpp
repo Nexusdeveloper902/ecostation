@@ -7,6 +7,11 @@
  */
 #include <unity.h>
 
+void runHceProtocolTests();
+void runRequestSignerTests();
+void runPayloadTests();
+void runResponseTests();
+void runCapturePayloadTests();
 void runStationConfigTests();
 
 // Compartido por todas las pruebas (Unity llama estas funciones en cada RUN_TEST).
@@ -16,6 +21,11 @@ void tearDown() {}
 int main() {
     UNITY_BEGIN();
 
+    runHceProtocolTests();     // APDU HCE: constructores, parsers, HMAC
+    runRequestSignerTests();   // firma Pulse-HMAC de la cabecera Authorization
+    runPayloadTests();         // cargas JSON (tap, emparejar, asociar)
+    runResponseTests();        // lectura de respuestas del servidor
+    runCapturePayloadTests();  // bytes multipart + canónicos de firma
     runStationConfigTests();  // mapa de hardware de la estación
 
     return UNITY_END();
