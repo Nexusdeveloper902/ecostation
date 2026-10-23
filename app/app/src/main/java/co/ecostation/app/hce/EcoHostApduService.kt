@@ -12,22 +12,41 @@ import co.ecostation.app.store.AppSettings
  */
 class EcoHostApduService : HostApduService() {
 
-    private val settings by lazy { AppSettings(this) }
-
-    private val responder = HceResponder(
-        CredentialRuntime.keys,
-        CredentialRuntime.enrollment,
-        onAuthenticated = { settings.linkPending = false },
-    )
-
     /**
-     * Resolve this device's credential before any reader can ask for it. The
-     * NFC stack starts this service on its own — a tap works with the app
-     * closed and the phone locked — so the activity cannot be relied on to
-     * have run first.
+     * Built in [onCreate], never lazily on the APDU thread: the NFC stack may
+     * start this service on its own and the first tap must not wait for a
+     * SharedPreferences/Keystore touch.
      */
+    private lateinit var settings: AppSettings
+    private lateinit var responder: HceResponder
+
     override fun onCreate() {
         super.onCreate()
+        settings = AppSettings(this)
+        responder = HceResponder(
+            CredentialRuntime.keys,
+            CredentialRuntime.enrollment,
+            onAuthenticated = {
+                // A CHALLENGE answered with the OLD key while a re-link window
+                // is open proves nothing about the new one: keep that window
+                // (and its "vinculando" state) intact.
+                val now = System.currentTimeMillis()
+                val phase = LinkState.phase(
+                    pending = settings.linkPending,
+                    pendingUntilMs = settings.linkPendingUntilMs,
+                    sent = settings.linkSent,
+                    nowMs = now,
+                )
+                if (phase != LinkState.Phase.PENDING) settings.linkSent = false
+            },
+            onAdopted = {
+                // The reader received the new key: this is the only place
+                // "llave enviada" is turned on.
+                settings.linkPending = false
+                settings.linkPendingUntilMs = 0L
+                settings.linkSent = true
+            },
+        )
         CredentialId.install(this)
     }
 
@@ -47,19 +66,35 @@ class EcoHostApduService : HostApduService() {
 /** Minimal observable for reader events (service -> activity). No dependencies. */
 object HceEvents {
     private val listeners = mutableListOf<(String) -> Unit>()
-    private val lock = Any()
-    val history = ArrayDeque<String>()
+    private val history = ArrayDeque<String>()
 
     fun emit(event: String) {
-        val snapshot: List<(String) -> Unit>
-        synchronized(lock) {
-            history.addLast(event)
-            while (history.size > 5) history.removeFirst()
-            snapshot = listeners.toList()
-        }
+        val snapshot = remember(event)
         snapshot.forEach { it(event) }
     }
 
-    fun addListener(l: (String) -> Unit) = synchronized(lock) { listeners.add(l) }
-    fun removeListener(l: (String) -> Unit) = synchronized(lock) { listeners.remove(l) }
+    /**
+     * Appends and returns a listener snapshot. `@Synchronized` (same monitor
+     * as [historySnapshot]) so the UI can read a coherent last-5 at any time.
+     */
+    @Synchronized
+    private fun remember(event: String): List<(String) -> Unit> {
+        history.addLast(event)
+        while (history.size > 5) history.removeFirst()
+        return listeners.toList()
+    }
+
+    /** Immutable copy of the last events, safe to read from any thread. */
+    @Synchronized
+    fun historySnapshot(): List<String> = history.toList()
+
+    @Synchronized
+    fun addListener(l: (String) -> Unit) {
+        listeners.add(l)
+    }
+
+    @Synchronized
+    fun removeListener(l: (String) -> Unit) {
+        listeners.remove(l)
+    }
 }

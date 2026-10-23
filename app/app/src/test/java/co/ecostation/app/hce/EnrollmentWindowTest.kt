@@ -28,7 +28,7 @@ class EnrollmentWindowTest {
         val source = key.copyOf()
         val w = EnrollmentWindow()
         w.open("ECO-A", source, nowMs = 0)
-        source.fill(0) // the provisioner wipes its array right after open()
+        source.fill(0) // beginEnrollment wipes its array right after open()
         assertArrayEquals(key, w.release("ECO-A", nowMs = 1))
     }
 

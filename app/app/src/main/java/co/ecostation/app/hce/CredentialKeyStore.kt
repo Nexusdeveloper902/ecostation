@@ -3,7 +3,6 @@ package co.ecostation.app.hce
 import android.security.keystore.KeyProperties
 import android.security.keystore.KeyProtection
 import java.security.KeyStore
-import java.security.SecureRandom
 import javax.crypto.Mac
 import javax.crypto.SecretKey
 import javax.crypto.spec.SecretKeySpec
@@ -14,20 +13,18 @@ import javax.crypto.spec.SecretKeySpec
  * There is no shared HCE secret any more: every credential has its own
  * 256-bit key, and the backend holds the only other copy. The HCE path only
  * ever asks for a MAC — it never sees key bytes. Raw bytes exist exactly
- * once, when [provision] creates a key, so the caller can hand them to the
- * reader during the enrollment window ([EnrollmentWindow]) and wipe them.
+ * once, while `CredentialRuntime.beginEnrollment` hands a fresh random key to
+ * the reader through the enrollment window ([EnrollmentWindow]); the caller
+ * wipes them immediately after.
+ *
+ * There is deliberately no `provision` on this interface: the production
+ * store only ever imports what the reader confirmed, and the fresh key comes
+ * from the enrollment path.
  */
 interface CredentialKeyStore {
 
     /** True when a usable key entry exists for [credentialId]. */
     fun hasKey(credentialId: String): Boolean
-
-    /**
-     * Create a fresh key for [credentialId], REPLACING any previous one, and
-     * return its raw bytes for the one-time hand-off. The caller owns the
-     * array and must wipe it.
-     */
-    fun provision(credentialId: String): ByteArray
 
     /**
      * Import [raw] as this credential's key, REPLACING any previous one.
@@ -58,7 +55,7 @@ interface CredentialKeyStore {
  * Why the key is IMPORTED rather than generated inside the Keystore: the HCE
  * wire protocol is a symmetric HMAC, so the backend must hold the same key, and a
  * Keystore-generated key can never leave the Keystore. The key is therefore
- * drawn from [SecureRandom], imported at once as a non-exportable
+ * drawn from `SecureRandom`, imported at once as a non-exportable
  * `PURPOSE_SIGN` HMAC-SHA256 entry, and its raw bytes are handed out only for
  * the single enrollment hand-off. After that, the app process can use the key
  * but cannot read it back.
@@ -86,15 +83,6 @@ class AndroidKeystoreCredentialKeyStore : CredentialKeyStore {
         false
     }
 
-    override fun provision(credentialId: String): ByteArray {
-        val raw = ByteArray(CredentialKeyStore.KEY_BYTES).also { SecureRandom().nextBytes(it) }
-        if (!adopt(credentialId, raw)) {
-            raw.fill(0)
-            throw IllegalStateException("el Keystore rechazó la llave de la credencial")
-        }
-        return raw
-    }
-
     override fun adopt(credentialId: String, raw: ByteArray): Boolean {
         if (raw.size != CredentialKeyStore.KEY_BYTES) return false
         return try {
@@ -107,8 +95,8 @@ class AndroidKeystoreCredentialKeyStore : CredentialKeyStore {
 
     /**
      * Import [raw] as the non-exportable HMAC key for [credentialId]. Only
-     * [provision] calls it in the app; `internal` so the instrumented tests
-     * can seed a KNOWN key and check the Keystore MAC against a literal.
+     * [adopt] calls it in the app; `internal` so the instrumented tests can
+     * seed a KNOWN key and check the Keystore MAC against a literal.
      */
     internal fun importKey(credentialId: String, raw: ByteArray) {
         keyStore.setEntry(

@@ -46,13 +46,38 @@ class AppSettings(context: Context) {
         set(value) = plain.edit().putBoolean(KEY_SPEAKER_ENABLED, value).apply()
 
     /**
-     * True from the moment a link window opens until the first CHALLENGE the
-     * reader answers `9000` (or the link is cancelled). It is only a UI flag,
-     * never a secret: the old key keeps working while it is set.
+     * True from the moment a link window opens until the reader adopts the
+     * new key (`ENROLL` `9000`) or the person cancels. [linkPendingUntilMs]
+     * bounds it in wall-clock time, so a process death cannot leave the UI
+     * promising a window that no longer exists. UI flags only, never secrets:
+     * the old key keeps working while they are set.
      */
     var linkPending: Boolean
         get() = plain.getBoolean(KEY_LINK_PENDING, false)
-        set(value) = plain.edit().putBoolean(KEY_LINK_PENDING, value).apply()
+        set(value) = putBooleanIfChanged(KEY_LINK_PENDING, value)
+
+    /** Wall-clock deadline of the open link window; 0 when none is open. */
+    var linkPendingUntilMs: Long
+        get() = plain.getLong(KEY_LINK_PENDING_UNTIL, 0L)
+        set(value) {
+            if (linkPendingUntilMs == value) return
+            plain.edit().putLong(KEY_LINK_PENDING_UNTIL, value).apply()
+        }
+
+    /**
+     * True after the reader adopted the new key (`ENROLL` `9000`) and until a
+     * successful `CHALLENGE` proves the reader actually uses it, or until the
+     * person starts an explicit re-link. Set only by the adopt-success path.
+     */
+    var linkSent: Boolean
+        get() = plain.getBoolean(KEY_LINK_SENT, false)
+        set(value) = putBooleanIfChanged(KEY_LINK_SENT, value)
+
+    /** Link flags change from the APDU thread; skip disk writes when unchanged. */
+    private fun putBooleanIfChanged(key: String, value: Boolean) {
+        if (plain.getBoolean(key, false) == value) return
+        plain.edit().putBoolean(key, value).apply()
+    }
 
     // ----------------------------------------------------------- sealed prefs
 
@@ -81,8 +106,12 @@ class AppSettings(context: Context) {
      * - A damaged *format* is dropped: it can never open.
      * - An invalidated/unrecoverable KEY wipes every sealed value and the key
      *   once: they were all sealed under the same dead key.
-     * - Any other crypto/provider failure is "unavailable": the ciphertext is
-     *   kept, the getter returns null, and a later read can still succeed.
+     * - A field-AAD failure first retries as a legacy (no-AAD) blob. Older
+     *   installs sealed without AAD; if that opens, the value is re-sealed
+     *   with its field AAD and returned instead of being orphaned.
+     * - If both reads fail, the entry cannot be opened by this app version:
+     *   it is dropped as "unavailable" so a later read does not repeat the
+     *   failed crypto path forever.
      */
     private fun readSealed(name: String): String? {
         val stored = sealed.getString(name, null) ?: return null
@@ -108,7 +137,30 @@ class AppSettings(context: Context) {
             ReadResult.Value(opened)
         }
     } catch (e: Exception) {
-        if (isKeyInvalidated(e)) ReadResult.Invalidated else ReadResult.Unavailable
+        if (isKeyInvalidated(e)) ReadResult.Invalidated else migrateLegacyAad(name, stored)
+    }
+
+    /**
+     * Before AAD binding, values were sealed with no associated data. Try that
+     * shape once; on success re-seal immediately so the next read takes the
+     * bound path. A swapped field AAD still fails both reads and is dropped.
+     */
+    private fun migrateLegacyAad(name: String, stored: String): ReadResult = try {
+        val legacy = Sealer.openStrict(keystoreKey(), stored, null)
+        if (legacy == null) {
+            sealed.edit().remove(name).apply()
+            ReadResult.Malformed
+        } else {
+            sealed.edit().putString(name, Sealer.seal(keystoreKey(), legacy, aad(name))).apply()
+            ReadResult.Value(legacy)
+        }
+    } catch (e: Exception) {
+        if (isKeyInvalidated(e)) {
+            ReadResult.Invalidated
+        } else {
+            sealed.edit().remove(name).apply()
+            ReadResult.Unavailable
+        }
     }
 
     private fun writeSealed(name: String, value: String?) {
@@ -187,6 +239,8 @@ class AppSettings(context: Context) {
         const val KEY_SERVER_ADDRESS = "server_address"
         const val KEY_SPEAKER_ENABLED = "speaker_enabled"
         const val KEY_LINK_PENDING = "link_pending"
+        const val KEY_LINK_PENDING_UNTIL = "link_pending_until"
+        const val KEY_LINK_SENT = "link_sent"
         const val KEY_SPEAKER_EMAIL = "speaker_email"
         const val KEY_SPEAKER_PASSWORD = "speaker_password"
         const val KEY_STUDENT_TOKEN = "student_token"

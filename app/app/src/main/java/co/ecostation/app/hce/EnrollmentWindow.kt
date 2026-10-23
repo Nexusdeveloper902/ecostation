@@ -3,15 +3,17 @@ package co.ecostation.app.hce
 /**
  * The only time this phone's key leaves the Keystore path.
  *
- * The holder opens it from the card screen ("Link this phone") at the pairing
- * desk. It then holds a copy of the freshly provisioned key for [ttlMs] and
- * releases it to ONE reader `ENROLL`, for the same credential id only. The
- * copy is wiped when it is released, when the window expires, and when a new
- * window replaces it.
+ * The holder opens it from the card screen ("Vincular este teléfono") at the
+ * pairing desk. [CredentialRuntime.beginEnrollment] draws a fresh random key
+ * and this window holds a copy for [ttlMs]; it releases that copy to ONE
+ * reader `ENROLL`, for the same credential id only. Nothing is imported yet:
+ * the current key keeps answering until the store adopts the new one. The copy
+ * is wiped when it is released, when the window expires, and when a new window
+ * replaces it.
  *
  * Single release on purpose. If something else reads the key first, the
  * desk's reader gets `6985`, the pairing visibly fails, and re-opening the
- * window provisions a NEW key, which makes the stolen copy useless.
+ * window draws a NEW key, which makes the stolen copy useless.
  *
  * Pure JVM, with the clock passed in, so it is unit-tested on the host.
  */

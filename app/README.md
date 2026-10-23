@@ -67,10 +67,21 @@ muestran en **Mis puntos**, donde llegan en `balance.student`.
 pero **no reemplaza la llave activa**. La credencial anterior sigue respondiendo
 a los lectores; la nueva se importa al Keystore solo cuando el lector de la mesa
 confirma el `ENROLL` (`adopt`). Si la ventana expira, se cancela o el lector
-nunca contesta, el teléfono sigue sirviendo con la llave vieja. El estado de la
-tarjeta muestra `LLAVE ENVIADA` (bandera `linkPending`) hasta el primer
-`CHALLENGE` respondido con `9000`; a partir de ahí vuelve a `LISTA`/`VERIFICADA`.
-Cancelar cierra la ventana sin tocar el Keystore.
+nunca contesta, el teléfono sigue sirviendo con la llave vieja.
+
+La UI separa dos banderas persistidas (más un vencimiento de 60 s en hora de
+pared, para sobrevivir a la muerte del proceso):
+
+- `linkPending` + `linkPendingUntilMs` mientras la ventana está abierta
+  (`VINCULANDO`); se limpian al cancelar o al reanudar con la ventana vencida;
+- `linkSent`, activada **solo** cuando el lector adopta la llave (`ENROLL`
+  `9000`), muestra `LLAVE ENVIADA` hasta el primer `CHALLENGE` respondido con
+  `9000` que ocurra fuera de una ventana nueva.
+
+Con una llave presente y sin ventana en curso (`IDLE` o `SENT`) la tarjeta
+ofrece «Vincular de nuevo»: un `ENROLL` perdido o una llave desincronizada se
+resuelve sin desinstalar, pasando por el mismo flujo seguro. Cancelar cierra la
+ventana sin tocar el Keystore.
 
 ### Tipografías, iconos y marca
 

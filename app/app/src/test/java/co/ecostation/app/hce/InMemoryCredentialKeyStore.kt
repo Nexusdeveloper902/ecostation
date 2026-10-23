@@ -11,8 +11,6 @@ import javax.crypto.spec.SecretKeySpec
  */
 class InMemoryCredentialKeyStore : CredentialKeyStore {
     private val keys = HashMap<String, ByteArray>()
-    var provisionCount = 0
-        private set
 
     /** Set false to simulate a Keystore that refuses the imported key. */
     var adoptResult = true
@@ -27,13 +25,6 @@ class InMemoryCredentialKeyStore : CredentialKeyStore {
     }
 
     override fun hasKey(credentialId: String) = keys.containsKey(credentialId)
-
-    override fun provision(credentialId: String): ByteArray {
-        provisionCount++
-        val raw = ByteArray(CredentialKeyStore.KEY_BYTES).also { java.security.SecureRandom().nextBytes(it) }
-        keys[credentialId] = raw.copyOf()
-        return raw
-    }
 
     override fun adopt(credentialId: String, raw: ByteArray): Boolean {
         if (!adoptResult) return false

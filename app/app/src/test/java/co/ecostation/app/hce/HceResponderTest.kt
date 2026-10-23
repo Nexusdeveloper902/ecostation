@@ -29,7 +29,15 @@ class HceResponderTest {
         window: EnrollmentWindow = EnrollmentWindow(),
         cred: String = ApduProtocolTest.VECTOR_CRED,
         authenticated: (() -> Unit)? = null,
-    ) = HceResponder(keys, window, credentialId = { cred }, clockMs = { now }, onAuthenticated = authenticated)
+        adopted: (() -> Unit)? = null,
+    ) = HceResponder(
+        keys,
+        window,
+        credentialId = { cred },
+        clockMs = { now },
+        onAuthenticated = authenticated,
+        onAdopted = adopted,
+    )
 
     @Test
     fun a_full_tap_answers_with_this_credentials_own_key() {
@@ -146,6 +154,43 @@ class HceResponderTest {
     }
 
     @Test
+    fun only_a_successful_enroll_reports_the_adoption() {
+        var adopted = 0
+        var authenticated = 0
+        val cred = ApduProtocolTest.VECTOR_CRED
+        val window = EnrollmentWindow().apply { open(cred, ByteArray(32) { 0x21 }, now) }
+        val keys = InMemoryCredentialKeyStore().apply { put(cred, ByteArray(32) { 0x20 }) }
+        val r = responder(
+            keys,
+            window,
+            authenticated = { authenticated++ },
+            adopted = { adopted++ },
+        )
+        r.respond(select)
+
+        // A CHALLENGE with the OLD key is not an adoption.
+        r.respond(challenge(ApduProtocolTest.VECTOR_NONCE))
+        assertEquals(0, adopted)
+        assertEquals(1, authenticated)
+
+        r.respond(enroll)
+        assertEquals(1, adopted)
+        assertEquals(1, authenticated)
+
+        // The window is spent: a second ENROLL gets 6985 and reports nothing.
+        r.respond(enroll)
+        assertEquals(1, adopted)
+
+        // A store that refuses the import must not look adopted either.
+        val refusing = InMemoryCredentialKeyStore().apply { adoptResult = false }
+        val secondWindow = EnrollmentWindow().apply { open(cred, ByteArray(32) { 0x22 }, now) }
+        val refused = responder(refusing, secondWindow, adopted = { adopted++ })
+        refused.respond(select)
+        assertArrayEquals(hex("6985"), refused.respond(enroll))
+        assertEquals(1, adopted)
+    }
+
+    @Test
     fun cancelling_the_window_leaves_the_old_key_intact() {
         val keys = InMemoryCredentialKeyStore()
         val cred = ApduProtocolTest.VECTOR_CRED
@@ -189,7 +234,8 @@ class HceResponderTest {
     fun relinking_replaces_the_key_so_an_old_copy_is_useless() {
         val keys = InMemoryCredentialKeyStore()
         val cred = ApduProtocolTest.VECTOR_CRED
-        val first = keys.provision(cred)
+        val first = ByteArray(32) { 0x10 }
+        keys.put(cred, first)
         val second = ByteArray(32) { 0x77 }
         assertTrue(keys.adopt(cred, second))
 

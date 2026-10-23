@@ -165,6 +165,7 @@
 
     <!-- Vinculación: la llave propia de esta credencial -->
     <string name="link_phone">Vincular este teléfono</string>
+    <string name="link_again">Vincular de nuevo</string>
     <string name="link_title">Vincular con EcoStation</string>
     <string name="link_body">Hazlo en la mesa de emparejamiento: pide que armen tu nombre y que pongan el lector en modo EMPAREJAR. Luego acerca el teléfono al lector antes de un minuto.\n\nSe crea una llave nueva, solo para este teléfono, guardada en su almacén seguro. La llave actual sigue funcionando hasta que la estación reciba la nueva, así que puedes cancelar sin quedarte sin carné.</string>
     <string name="link_start">Empezar</string>

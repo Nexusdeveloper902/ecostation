@@ -277,8 +277,10 @@ class ApduProtocolTest {
         )
         assertArrayEquals(vectorKey, adopted)
         assertArrayEquals(vectorKey + ApduProtocol.SW_OK, resp)
-        // The key bytes belong to the window buffer and are wiped after the call.
-        assertTrue(adopted!!.contentEquals(vectorKey))
+        // The real post-condition: the single release closed the window, so no
+        // second reader can receive the same key.
+        assertEquals(0, window.remainingMs(1))
+        assertNull(window.release(VECTOR_CRED, 2))
     }
 
     @Test

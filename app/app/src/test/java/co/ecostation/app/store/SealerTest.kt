@@ -71,6 +71,35 @@ class SealerTest {
     }
 
     @Test
+    fun a_legacy_blob_without_aad_is_readable_and_migratable() {
+        // Pre-AAD install: sealed with no associated data.
+        val legacy = Sealer.seal(k, "5|abc", null)
+        val field = "student_token".toByteArray()
+
+        // The field-bound read fails first, exactly as AppSettings observes...
+        try {
+            Sealer.openStrict(k, legacy, field)
+            org.junit.Assert.fail("a legacy blob must not open under a field AAD")
+        } catch (_: Exception) {
+            // expected: GCM authentication failure
+        }
+        // ...the one-time legacy retry opens it...
+        val migrated = Sealer.openStrict(k, legacy, null)
+        assertEquals("5|abc", migrated)
+
+        // ...and re-sealing with the field AAD makes the next read bound.
+        val resealed = Sealer.seal(k, migrated!!, field)
+        assertEquals("5|abc", Sealer.openStrict(k, resealed, field))
+        // A swapped field still fails after migration.
+        try {
+            Sealer.openStrict(k, resealed, "speaker_password".toByteArray())
+            org.junit.Assert.fail("a swapped field AAD must still fail")
+        } catch (_: Exception) {
+            // expected
+        }
+    }
+
+    @Test
     fun openStrict_distinguishes_malformed_from_crypto_failure() {
         assertNull(Sealer.openStrict(k, "v1:zz"))
         assertNull(Sealer.openStrict(k, null))

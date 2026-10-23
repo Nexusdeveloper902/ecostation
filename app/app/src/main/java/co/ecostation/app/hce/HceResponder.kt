@@ -9,8 +9,8 @@ import java.security.SecureRandom
  * The path is: APDU → per-tap session → this credential's id → nonce → key
  * lookup ([CredentialKeyStore]) → HMAC → response APDU, plus the one-time
  * ENROLL hand-off from the [EnrollmentWindow]. A successful ENROLL is adopted
- * into the store before the bytes leave; a successful CHALLENGE notifies
- * [onAuthenticated] so the UI can clear its "llave enviada" state.
+ * into the store before the bytes leave ([onAdopted]); a successful CHALLENGE
+ * notifies [onAuthenticated] so the UI can clear its "llave enviada" state.
  *
  * Pure Kotlin apart from the default monotonic clock; tests inject both.
  */
@@ -20,6 +20,7 @@ class HceResponder(
     private val credentialId: () -> String = { ApduProtocol.CRED_ID },
     private val clockMs: () -> Long = { SystemClock.elapsedRealtime() },
     private val onAuthenticated: (() -> Unit)? = null,
+    private val onAdopted: (() -> Unit)? = null,
 ) {
     private val session = ApduProtocol.Session()
 
@@ -37,7 +38,12 @@ class HceResponder(
             clockMs(),
             onReleased = { raw -> keys.adopt(id, raw) },
         )
-        if (isSuccess(response) && isChallenge(commandApdu)) onAuthenticated?.invoke()
+        if (isSuccess(response)) {
+            when {
+                isChallenge(commandApdu) -> onAuthenticated?.invoke()
+                isEnroll(commandApdu) -> onAdopted?.invoke()
+            }
+        }
         return response
     }
 
@@ -71,6 +77,10 @@ class HceResponder(
     /** CHALLENGE is `80 10 ...`; only that command can prove the key works. */
     private fun isChallenge(cmd: ByteArray): Boolean =
         cmd.size >= 2 && cmd[0] == 0x80.toByte() && cmd[1] == 0x10.toByte()
+
+    /** ENROLL is `80 20 ...`; a 9000 answer means the store adopted the key. */
+    private fun isEnroll(cmd: ByteArray): Boolean =
+        cmd.size >= 2 && cmd[0] == 0x80.toByte() && cmd[1] == 0x20.toByte()
 }
 
 /**

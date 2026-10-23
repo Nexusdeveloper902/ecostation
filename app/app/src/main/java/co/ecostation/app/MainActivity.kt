@@ -26,6 +26,7 @@ import co.ecostation.app.hce.CredentialId
 import co.ecostation.app.hce.CredentialRuntime
 import co.ecostation.app.hce.EcoHostApduService
 import co.ecostation.app.hce.HceEvents
+import co.ecostation.app.hce.LinkState
 import co.ecostation.app.speaker.FeedbackBridge
 import co.ecostation.app.speaker.FeedbackCue
 import co.ecostation.app.speaker.FeedbackSounds
@@ -60,6 +61,7 @@ class MainActivity : Activity() {
     private lateinit var stateChip: TextView
     private lateinit var tapTarget: TapTargetView
     private lateinit var unlinkedGroup: View
+    private lateinit var linkPhone: TextView
     private lateinit var linkCancel: Button
     private lateinit var nfcSettingsButton: Button
     private lateinit var lastTapPill: TextView
@@ -127,30 +129,32 @@ class MainActivity : Activity() {
     private val refresh = Runnable { render() }
 
     /**
-     * Called by the HCE service on its APDU thread. The sound is played here
-     * (SoundPool is cheap and thread-safe); everything that touches views or
-     * the Keystore is posted and coalesced, so the APDU response never waits
-     * for a render.
+     * Called by the HCE service on its APDU thread. It must do no binder work
+     * at all: the cue (an AudioFlinger call) and every view/Keystore touch are
+     * inside the same coalesced post, so the APDU response returns immediately.
+     * The link flags themselves are written by the service callbacks.
      */
     private val listener: (String) -> Unit = { event ->
         val cue = FeedbackCue.fromHceEvent(event)
-        if (cue != null) sounds.play(cue)
         handler.post {
             if (isFinishing || isDestroyed) return@post
             lastTapAtMs = System.currentTimeMillis()
-            if (cue != null) recordCue(cue)
+            if (cue != null) {
+                sounds.play(cue)
+                recordCue(cue)
+            }
             if (event.startsWith(AUTH_EVENT)) {
                 verifiedAtMs = SystemClock.elapsedRealtime()
                 keyPresent = true
-                if (settings.linkPending) settings.linkPending = false
                 handler.removeCallbacks(refresh)
                 handler.postDelayed(refresh, VERIFIED_HOLD_MS)
             } else if (event.startsWith(ENROLL_EVENT)) {
                 keyPresent = true
             } else if (event.startsWith(ENROLL_ERROR_EVENT)) {
                 // The reader got 6985: nothing was adopted, so do not keep
-                // promising "llave enviada".
+                // promising an open window. `linkSent` is untouched.
                 settings.linkPending = false
+                settings.linkPendingUntilMs = 0L
                 refreshKeyPresence()
             }
             postRender()
@@ -184,6 +188,7 @@ class MainActivity : Activity() {
         stateChip = findViewById(R.id.stateChip)
         tapTarget = findViewById(R.id.tapTarget)
         unlinkedGroup = findViewById(R.id.unlinkedGroup)
+        linkPhone = findViewById(R.id.linkPhone)
         linkCancel = findViewById(R.id.linkCancel)
         nfcSettingsButton = findViewById(R.id.nfcSettingsButton)
         lastTapPill = findViewById(R.id.lastTapPill)
@@ -207,7 +212,7 @@ class MainActivity : Activity() {
         signalList = findViewById(R.id.signalList)
         signalEmpty = findViewById(R.id.signalEmpty)
 
-        findViewById<TextView>(R.id.linkPhone).setOnClickListener { askToLink() }
+        linkPhone.setOnClickListener { askToLink() }
         findViewById<TextView>(R.id.studentButton).setOnClickListener {
             startActivity(Intent(this, StudentActivity::class.java))
             finish()
@@ -219,6 +224,8 @@ class MainActivity : Activity() {
         linkCancel.setOnClickListener {
             CredentialRuntime.enrollment.close()
             settings.linkPending = false
+            settings.linkPendingUntilMs = 0L
+            settings.linkSent = false
             handler.removeCallbacks(tick)
             refreshKeyPresence()
             postRender()
@@ -301,6 +308,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        expireLinkWindowIfNeeded()
         HceEvents.addListener(listener)
         refreshCaches()
         render()
@@ -316,6 +324,24 @@ class MainActivity : Activity() {
         handler.removeCallbacksAndMessages(TEST_SEQUENCE_TOKEN)
         renderQueued = false
         super.onPause()
+    }
+
+    /**
+     * A link window is in-memory ([CredentialRuntime.enrollment]) and bounded
+     * by the persisted wall-clock deadline. Either one being gone means the
+     * promised window no longer exists; drop the pending flags so the UI does
+     * not show "vinculando 0 s" after a process death. `linkSent` survives:
+     * an adoption still needs its confirming CHALLENGE.
+     */
+    private fun expireLinkWindowIfNeeded() {
+        if (!settings.linkPending) return
+        val windowGone = CredentialRuntime.enrollment.remainingMs(CredentialRuntime.nowMs()) <= 0
+        val expired = settings.linkPendingUntilMs <= System.currentTimeMillis()
+        if (windowGone || expired) {
+            settings.linkPending = false
+            settings.linkPendingUntilMs = 0L
+            handler.removeCallbacks(tick)
+        }
     }
 
     /** Keystore/NFC/audio binders: only on resume and on explicit refresh. */
@@ -381,12 +407,17 @@ class MainActivity : Activity() {
             .setPositiveButton(R.string.link_start) { _, _ ->
                 if (!CredentialRuntime.beginEnrollment()) {
                     settings.linkPending = false
+                    settings.linkPendingUntilMs = 0L
                     AlertDialog.Builder(this)
                         .setMessage(R.string.link_failed)
                         .setPositiveButton(android.R.string.ok, null)
                         .show()
                 } else {
+                    // An explicit re-link supersedes any unconfirmed adoption.
+                    settings.linkSent = false
                     settings.linkPending = true
+                    settings.linkPendingUntilMs =
+                        System.currentTimeMillis() + ENROLLMENT_TTL_MS.toLong()
                 }
                 handler.removeCallbacks(tick)
                 handler.post(tick)
@@ -414,23 +445,35 @@ class MainActivity : Activity() {
 
     private enum class CardState { READY, LINKED, VERIFIED, NFC_OFF, UNSUPPORTED, LINKING, LINK_SENT, NOT_LINKED }
 
+    /** Persisted flags resolved against the wall clock (survives process death). */
+    private fun linkPhase(): LinkState.Phase = LinkState.phase(
+        pending = settings.linkPending,
+        pendingUntilMs = settings.linkPendingUntilMs,
+        sent = settings.linkSent,
+        nowMs = System.currentTimeMillis(),
+    )
+
     private fun currentState(): CardState {
         val hasHce = packageManager.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION)
         val adapter = NfcAdapter.getDefaultAdapter(this)
         if (adapter == null || !hasHce) return CardState.UNSUPPORTED
         if (!adapter.isEnabled) return CardState.NFC_OFF
         if (SystemClock.elapsedRealtime() - verifiedAtMs < VERIFIED_HOLD_MS) return CardState.VERIFIED
-        if (CredentialRuntime.enrollment.remainingMs(CredentialRuntime.nowMs()) > 0) return CardState.LINKING
 
-        // LLAVE ENVIADA until a CHALLENGE proves the reader knows the new key.
-        if (settings.linkPending) return CardState.LINK_SENT
+        when (linkPhase()) {
+            // A re-link window wins over an earlier, still-unconfirmed adoption.
+            LinkState.Phase.PENDING -> return CardState.LINKING
+            // LLAVE ENVIADA until a CHALLENGE proves the reader knows the key.
+            LinkState.Phase.SENT -> return CardState.LINK_SENT
+            LinkState.Phase.IDLE -> Unit
+        }
 
         // A phone without a key cannot answer a reader: say so instead of READY.
         if (!hasKey()) return CardState.NOT_LINKED
 
         // Otherwise reflect the live exchange: LINKED from the reader's
         // SELECT until it deactivates the target.
-        val last = HceEvents.history.toList().lastOrNull()
+        val last = HceEvents.historySnapshot().lastOrNull()
         return when {
             last == null -> CardState.READY
             last.startsWith(AUTH_EVENT) -> CardState.VERIFIED
@@ -521,8 +564,13 @@ class MainActivity : Activity() {
         hintView.visibility = if (state == CardState.NOT_LINKED) View.GONE else View.VISIBLE
 
         unlinkedGroup.visibility = if (state == CardState.NOT_LINKED) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.linkPhone).visibility =
-            if (state == CardState.NOT_LINKED) View.VISIBLE else View.GONE
+        // Re-link is recoverable without uninstalling: a lost ENROLL response
+        // ("llave enviada") or a backend/key mismatch offers a fresh window.
+        val relink = LinkState.canRelink(linkPhase(), hasKey())
+        val showLink = state == CardState.NOT_LINKED ||
+            (relink && state != CardState.NFC_OFF && state != CardState.UNSUPPORTED)
+        linkPhone.setText(if (hasKey()) R.string.link_again else R.string.link_phone)
+        linkPhone.visibility = if (showLink) View.VISIBLE else View.GONE
         linkCancel.visibility =
             if (state == CardState.LINKING || state == CardState.LINK_SENT) View.VISIBLE else View.GONE
         nfcSettingsButton.visibility = if (state == CardState.NFC_OFF) View.VISIBLE else View.GONE
@@ -590,9 +638,10 @@ class MainActivity : Activity() {
     }
 
     private fun renderDiagnostics() {
+        val history = HceEvents.historySnapshot()
         val events =
-            if (HceEvents.history.isEmpty()) getString(R.string.diag_empty)
-            else HceEvents.history.joinToString("\n")
+            if (history.isEmpty()) getString(R.string.diag_empty)
+            else history.joinToString("\n")
         diagView.text = listOf(
             getString(R.string.diag_credential) to ApduProtocol.CRED_ID,
             getString(R.string.diag_hce) to hceReport(),
