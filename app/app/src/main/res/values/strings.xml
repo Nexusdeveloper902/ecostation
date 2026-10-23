@@ -57,6 +57,31 @@
     <string name="settings_bad_address">Dirección no válida</string>
     <string name="settings_save">Guardar</string>
 
+    <!-- Vista del estudiante -->
+    <string name="student_open">Mis puntos</string>
+    <string name="student_title">Mis puntos</string>
+    <string name="student_email">Correo</string>
+    <string name="student_password">Contraseña</string>
+    <string name="student_login">Entrar</string>
+    <string name="student_change_note">Debes cambiar tu contraseña para continuar</string>
+    <string name="student_current_password">Contraseña actual</string>
+    <string name="student_new_password">Contraseña nueva</string>
+    <string name="student_repeat_password">Repite la contraseña nueva</string>
+    <string name="student_change_button">Cambiar contraseña</string>
+    <string name="student_history">Historial de depósitos</string>
+    <string name="student_empty">Aún no tienes depósitos</string>
+    <string name="student_more">Ver más</string>
+    <string name="student_logout">Cerrar sesión</string>
+    <string name="student_balance">Saldo: %1$d puntos</string>
+    <string name="student_rank">Puesto: %1$d</string>
+    <string name="student_password_mismatch">Las contraseñas no coinciden</string>
+    <string name="student_error_session">Tu sesión expiró. Inicia sesión de nuevo.</string>
+    <string name="student_error_credentials">Correo o contraseña incorrectos, o la cuenta no es de estudiante</string>
+    <string name="student_error_not_linked">Tu cuenta no está vinculada a un estudiante. Avisa a tu docente.</string>
+    <string name="student_error_throttled">Demasiados intentos, espera un minuto</string>
+    <string name="student_error_no_server">No se encontró el servidor. Revisa la red o pon la dirección en Ajustes.</string>
+    <string name="student_error_server">No se pudo contactar al servidor</string>
+
     <!-- Vinculación: la llave propia de esta credencial -->
     <string name="link_phone">Vincular este teléfono</string>
     <string name="link_title">Vincular con EcoStation</string>

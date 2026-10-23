@@ -26,6 +26,10 @@
             android:name=".SettingsActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".StudentActivity"
+            android:exported="false" />
+
         <service
             android:name=".hce.EcoHostApduService"
             android:exported="true"

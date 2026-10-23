@@ -90,6 +90,9 @@ class MainActivity : Activity() {
         feedView = findViewById(R.id.feedView)
         audioView = findViewById(R.id.audioView)
         findViewById<TextView>(R.id.linkPhone).setOnClickListener { askToLink() }
+        findViewById<TextView>(R.id.studentButton).setOnClickListener {
+            startActivity(Intent(this, StudentActivity::class.java))
+        }
         findViewById<TextView>(R.id.settingsButton).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
