@@ -40,6 +40,27 @@ class EcoEndpointTest {
     }
 
     @Test
+    fun rank_keeps_every_acceptable_candidate_in_answer_order_for_verification() {
+        val candidates = listOf(
+            EcoEndpoint.Candidate("192.168.43.10", 8000, "1"),
+            EcoEndpoint.Candidate("8.8.8.8", 8000, "1"),
+            EcoEndpoint.Candidate("192.168.43.11", 8000, "1"),
+            EcoEndpoint.Candidate("192.168.43.10", 8000, "1"), // duplicate
+            EcoEndpoint.Candidate("192.168.43.12", 8000, "2"), // wrong protocol
+            EcoEndpoint.Candidate("192.168.43.13", 8001, null),
+        )
+        assertEquals(
+            listOf(
+                EcoEndpoint("192.168.43.10", 8000),
+                EcoEndpoint("192.168.43.11", 8000),
+                EcoEndpoint("192.168.43.13", 8001),
+            ),
+            EcoEndpoint.rank(candidates),
+        )
+        assertEquals(EcoEndpoint("192.168.43.10", 8000), EcoEndpoint.pick(candidates))
+    }
+
+    @Test
     fun probeHostsOnlySweepsSmallPrivateSubnets() {
         val hotspot = byteArrayOf(192.toByte(), 168.toByte(), 43, 1)
         val hosts = EcoEndpoint.probeHosts(hotspot, 24)

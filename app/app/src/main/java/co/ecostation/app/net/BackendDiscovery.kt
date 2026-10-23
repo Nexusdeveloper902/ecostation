@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
+import android.os.SystemClock
 import java.net.HttpURLConnection
 import java.net.Inet4Address
 import java.net.InetSocketAddress
@@ -79,16 +80,24 @@ class BackendDiscovery(context: Context) {
 
         // Resolve one at a time (pre-Android 14 NSD refuses concurrent resolves).
         val candidates = services.distinctBy { it.serviceName }.take(MAX_CONSIDERED).mapNotNull { resolve(it, log) }
-        val picked = EcoEndpoint.pick(candidates) ?: return null
+        val ranked = EcoEndpoint.rank(candidates)
+        if (ranked.isEmpty()) return null
+
         // protocol=1 is only a TXT advertisement: anyone on the LAN can publish
-        // it. Confirm the winner with the same manifest check as the probe
-        // before the station password is ever sent.
-        if (!looksLikeEcoStation(picked)) {
-            log("mDNS: $picked no parece EcoStation (manifest sin nombre/start_url) — usando sondeo de subred")
-            return null
+        // it, and one of those can be a slow/bad actor. Verify the first few
+        // under one short overall budget before falling back to the sweep.
+        val deadline = SystemClock.elapsedRealtime() + MDNS_VERIFY_BUDGET_MS
+        for (endpoint in ranked.take(MAX_VERIFIED)) {
+            val remaining = deadline - SystemClock.elapsedRealtime()
+            if (remaining <= 0L) break
+            if (looksLikeEcoStation(endpoint, remaining)) {
+                log("mDNS: resolved $endpoint")
+                return endpoint
+            }
+            log("mDNS: $endpoint no parece EcoStation (manifest sin nombre/start_url)")
         }
-        log("mDNS: resolved $picked")
-        return picked
+        log("mDNS: ningún anuncio verificado — usando sondeo de subred")
+        return null
     }
 
     @Suppress("DEPRECATION") // resolveService/host: still the only API below 34
@@ -177,18 +186,28 @@ class BackendDiscovery(context: Context) {
      * `/manifest.webmanifest` is a public, EcoStation web route. It must carry
      * both the app name and `start_url`; a bare `start_url` is not enough to
      * prove the host is ours before the station password is submitted.
+     *
+     * [budgetMs] is the OVERALL time this candidate may spend (connect +
+     * headers + drip-fed body). One slow advertiser must not hold discovery
+     * for hours.
      */
-    private fun looksLikeEcoStation(endpoint: EcoEndpoint): Boolean {
-        if (!EcoEndpoint.isLanHost(endpoint.host)) return false
+    private fun looksLikeEcoStation(
+        endpoint: EcoEndpoint,
+        budgetMs: Long = BoundedRead.MANIFEST_TIMEOUT_MS,
+    ): Boolean {
+        if (!EcoEndpoint.isLanHost(endpoint.host) || budgetMs <= 0L) return false
+        // Split the budget between connect and the body read so the whole
+        // probe (headers included) stays roughly inside it.
+        val step = (budgetMs / 2).coerceIn(50L, BoundedRead.MANIFEST_TIMEOUT_MS).toInt()
         var conn: HttpURLConnection? = null
         return try {
             val c = URL(endpoint.baseUrl + "/manifest.webmanifest").openConnection() as HttpURLConnection
             conn = c
-            c.connectTimeout = 1_500
-            c.readTimeout = 1_500
+            c.connectTimeout = step
+            c.readTimeout = step
             c.instanceFollowRedirects = false
             val body = if (c.responseCode == 200) {
-                BoundedRead.read(c.inputStream, BoundedRead.SMALL_MAX)
+                BoundedRead.read(c.inputStream, BoundedRead.SMALL_MAX, budgetMs)
             } else {
                 null
             }
@@ -205,6 +224,8 @@ class BackendDiscovery(context: Context) {
         const val SIBLING_WAIT_MS = 400L
         const val RESOLVE_TIMEOUT_MS = 4_000L
         const val MAX_CONSIDERED = 4 // same fan-out as the firmware
+        const val MAX_VERIFIED = 3 // verify a few, not just the first bad actor
+        const val MDNS_VERIFY_BUDGET_MS = 3_000L
         const val PROBE_THREADS = 48
         const val PROBE_CONNECT_MS = 500
         const val PROBE_BUDGET_MS = 15_000L

@@ -38,17 +38,21 @@ data class EcoEndpoint(val host: String, val port: Int) {
         fun protocolCompatible(txt: String?) = txt.isNullOrEmpty() || txt == PROTOCOL_VERSION
 
         /**
-         * Selection policy (same as firmware `pickEcoEndpoint`): first
-         * candidate with a LAN address, a non-zero port and a compatible
-         * protocol TXT. Non-LAN answers (public IPv4, cellular IPv6) are
-         * discarded before selection.
+         * Selection policy (same as firmware `pickEcoEndpoint`): all
+         * candidates with a LAN address, a non-zero port and a compatible
+         * protocol TXT, in answer order, without duplicates. The caller
+         * verifies more than one so a single bad actor on the LAN does not
+         * force the slow subnet probe.
          */
-        fun pick(candidates: List<Candidate>): EcoEndpoint? = candidates
+        fun rank(candidates: List<Candidate>): List<EcoEndpoint> = candidates
             .filter { !it.ip.isNullOrBlank() && it.port in 1..65535 }
             .filter { protocolCompatible(it.protocolTxt) }
             .filter { isLanHost(it.ip!!) }
-            .firstOrNull()
-            ?.let { EcoEndpoint(it.ip!!, it.port) }
+            .map { EcoEndpoint(it.ip!!, it.port) }
+            .distinct()
+
+        /** First acceptable candidate, per the firmware policy. */
+        fun pick(candidates: List<Candidate>): EcoEndpoint? = rank(candidates).firstOrNull()
 
         private val HOST = Regex("[A-Za-z0-9.-]+")
         private val IPV4 = Regex("""(\d{1,3})(\.\d{1,3}){3}""")

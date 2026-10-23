@@ -183,13 +183,14 @@ class SettingsActivity : Activity() {
                         val c = URL(endpoint.baseUrl + "/manifest.webmanifest")
                             .openConnection() as HttpURLConnection
                         conn = c
-                        c.connectTimeout = 2_500
-                        c.readTimeout = 2_500
+                        c.connectTimeout = BoundedRead.MANIFEST_TIMEOUT_MS.toInt()
+                        c.readTimeout = BoundedRead.MANIFEST_TIMEOUT_MS.toInt()
                         c.instanceFollowRedirects = false
                         val code = c.responseCode
                         val body = BoundedRead.read(
                             if (code == 200) c.inputStream else c.errorStream,
                             BoundedRead.SMALL_MAX,
+                            BoundedRead.MANIFEST_TIMEOUT_MS,
                         )
                         if (code == 200 && EcoEndpoint.isEcoStationManifest(body)) {
                             latency = SystemClock.elapsedRealtime() - started
