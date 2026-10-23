@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\MaterialClass;
 use App\Models\Setting;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -26,7 +27,7 @@ class SettingsService
         'photos.retention_days' => ['ecostation.photos.retention_days', 'required|integer|between:1,365'],
         'pairing.window_seconds' => ['ecostation.pairing_window_seconds', 'required|integer|between:10,600'],
         'accounts.student_email_domain' => ['ecostation.student_email_domain', 'required|string|max:190'],
-        'accounts.student_initial_password' => ['ecostation.student_initial_password', 'nullable|string|min:4|max:120'],
+        'accounts.student_initial_password' => ['ecostation.student_initial_password', 'nullable|string|min:8|max:72'],
     ];
 
     private const INT_KEYS = [
@@ -145,12 +146,34 @@ class SettingsService
 
         try {
             $rows = DB::table('settings')->get(['key', 'value']);
-        } catch (\Throwable) {
-            return;
+        } catch (QueryException $e) {
+            // Only the known pre-migration shape is survivable. Any other
+            // failure (locked DB, broken schema) must surface: awarding at
+            // fallback rates would silently corrupt balances.
+            if ($this->isMissingSettingsTable($e)) {
+                return;
+            }
+
+            throw $e;
         }
 
         foreach ($rows as $row) {
             self::$cache[(string) $row->key] = json_decode((string) $row->value, true);
         }
+    }
+
+    private function isMissingSettingsTable(QueryException $e): bool
+    {
+        // Ignore Laravel's trailing "(Connection: …, SQL: …)" block: the
+        // SQL itself contains the word `settings` even when the failure is
+        // about a DIFFERENT missing table/view.
+        $message = strstr($e->getMessage(), ' (Connection:', true) ?: $e->getMessage();
+
+        // SQLite "no such table: settings"; MySQL "Table 'db.settings'
+        // doesn't exist"; PostgreSQL relation "settings" does not exist.
+        return (bool) preg_match('/no such table[^\n]*\bsettings\b/i', $message)
+            || (bool) preg_match('/table\s+[`\'"]?[\w.]*\bsettings\b[`\'"]?\s+doesn.t exist/i', $message)
+            || (bool) preg_match('/relation\s+"?settings"?\s+does not exist/i', $message)
+            || (bool) preg_match('/unknown table\s+[`\'"]?[\w.]*\bsettings\b/i', $message);
     }
 }

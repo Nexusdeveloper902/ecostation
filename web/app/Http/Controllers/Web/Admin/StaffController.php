@@ -36,7 +36,7 @@ class StaffController extends Controller
             'name' => ['required', 'string', 'max:190'],
             'email' => ['required', 'email', 'max:190', 'unique:users,email'],
             'role' => ['required', Rule::in([UserRole::Admin->value, UserRole::Teacher->value, UserRole::Station->value])],
-            'password' => ['required', 'string', 'min:6', 'max:120'],
+            'password' => ['required', 'string', 'min:6', 'max:72'],
         ]);
 
         $role = (string) $data['role'];

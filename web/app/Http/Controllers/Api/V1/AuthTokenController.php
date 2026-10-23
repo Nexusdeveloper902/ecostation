@@ -24,6 +24,15 @@ use Laravel\Sanctum\PersonalAccessToken;
  */
 class AuthTokenController extends Controller
 {
+    /** bcrypt only reads the first 72 bytes; longer secrets must be refused. */
+    private const PASSWORD_MAX = 72;
+
+    /**
+     * A valid bcrypt hash used for unknown/non-student accounts so the
+     * response time never reveals whether the email exists.
+     */
+    private const DUMMY_HASH = '$2y$12$AxBI5NQLNwhBDcUPvG07h.QFg85hLImkNtTqo.q1JMEuC83v0srbO';
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -34,7 +43,12 @@ class AuthTokenController extends Controller
 
         $user = User::where('email', $validated['email'])->first();
 
-        if ($user === null || ! $user->isStudent() || ! Hash::check($validated['password'], $user->password)) {
+        // Always pay one hash check, even for an unknown email or a staff
+        // account: the identical 422 must also cost the same time.
+        $hash = $user !== null && $user->isStudent() ? $user->password : self::DUMMY_HASH;
+        $passwordOk = Hash::check($validated['password'], $hash);
+
+        if ($user === null || ! $user->isStudent() || ! $passwordOk) {
             throw ValidationException::withMessages(['email' => __('auth.failed')]);
         }
 
@@ -75,6 +89,7 @@ class AuthTokenController extends Controller
                 'required',
                 'string',
                 'min:8',
+                'max:'.self::PASSWORD_MAX,
                 'confirmed',
                 'different:current_password',
                 Rule::notIn(array_filter([settings()->studentInitialPassword()])),

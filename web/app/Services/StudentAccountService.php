@@ -29,6 +29,9 @@ use Illuminate\Support\Str;
  */
 class StudentAccountService
 {
+    /** Must satisfy the same min:8 / max:72 rules as a rotated password. */
+    private const INITIAL_PASSWORD_LENGTH = 12;
+
     /**
      * Provision (or return the existing) account for a student.
      *
@@ -145,7 +148,7 @@ class StudentAccountService
      */
     private function initialPassword(): string
     {
-        return settings()->studentInitialPassword() ?? Str::password(12);
+        return settings()->studentInitialPassword() ?? Str::password(self::INITIAL_PASSWORD_LENGTH);
     }
 
     /**

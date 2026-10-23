@@ -3,7 +3,10 @@
 namespace Tests\Unit;
 
 use App\Enums\MaterialClass;
+use App\Services\SettingsService;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -29,6 +32,30 @@ class SettingsServiceTest extends TestCase
         settings()->setMany(['points.plastic' => '20', 'photos.retention_days' => 7]);
         $this->assertSame(20, MaterialClass::Plastic->points());
         $this->assertSame(7, settings()->photoRetentionDays());
+    }
+
+    #[Test]
+    public function a_missing_settings_table_only_degrades_before_migration(): void
+    {
+        DB::statement('DROP TABLE settings');
+        SettingsService::flushCache();
+
+        $this->assertSame(30, settings()->photoRetentionDays());
+    }
+
+    #[Test]
+    public function any_other_settings_query_failure_surfaces_instead_of_awarding_default_rates(): void
+    {
+        // A broken view named `settings`: the query fails for a reason
+        // that is NOT "the pre-migration table is absent". Silently using
+        // fallback point rates here would award wrong balances.
+        DB::statement('DROP TABLE settings');
+        DB::statement('CREATE VIEW settings AS SELECT key, value FROM settings_missing_source');
+        SettingsService::flushCache();
+
+        $this->expectException(QueryException::class);
+
+        settings()->pointsFor(MaterialClass::Plastic);
     }
 
     #[Test]

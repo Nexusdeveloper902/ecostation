@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -100,6 +101,36 @@ class StudentApiTest extends TestCase
             'password' => 'not-the-password',
             'device_name' => 'EcoStation Android',
         ])->assertStatus(422)->assertJsonPath('errors.email.0', __('auth.failed'));
+    }
+
+    #[Test]
+    public function the_api_rejects_a_password_longer_than_the_bcrypt_limit(): void
+    {
+        $maria = $this->studentAccount('maria');
+        $token = $maria->createToken('telefono', ['student'])->plainTextToken;
+        $tooLong = str_repeat('b', 73);
+
+        $this->asStudent($token)->putJson('/api/v1/auth/password', [
+            'current_password' => 'password',
+            'password' => $tooLong,
+            'password_confirmation' => $tooLong,
+        ])->assertStatus(422)->assertJsonStructure(['errors' => ['password']]);
+
+        $this->assertTrue(Hash::check('password', $maria->fresh()->password));
+    }
+
+    #[Test]
+    public function an_unknown_account_still_pays_the_password_hash_check_for_timing_safety(): void
+    {
+        // The old short-circuit skipped Hash::check for unknown emails,
+        // making account existence measurable. The guard must run anyway.
+        Hash::shouldReceive('check')
+            ->once()
+            ->andReturn(false);
+
+        $this->mintToken('nadie@ecostation.test')
+            ->assertStatus(422)
+            ->assertJsonPath('errors.email.0', __('auth.failed'));
     }
 
     #[Test]

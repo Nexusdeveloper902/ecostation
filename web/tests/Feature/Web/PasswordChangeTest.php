@@ -205,6 +205,25 @@ class PasswordChangeTest extends TestCase
     }
 
     #[Test]
+    public function a_replacement_longer_than_the_bcrypt_limit_is_rejected(): void
+    {
+        $user = $this->flaggedStation();
+        $tooLong = str_repeat('a', 73);
+
+        $this->actingAs($user)
+            ->from(route('password.change'))
+            ->put(route('password.update'), [
+                'current_password' => 'password',
+                'password' => $tooLong,
+                'password_confirmation' => $tooLong,
+            ])
+            ->assertSessionHasErrors('password');
+
+        $this->assertTrue($user->fresh()->must_change_password);
+        $this->assertTrue(Hash::check('password', $user->fresh()->password));
+    }
+
+    #[Test]
     public function a_successful_rotation_clears_the_flag_and_lands_home(): void
     {
         $user = $this->flaggedStation();

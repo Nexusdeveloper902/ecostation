@@ -24,6 +24,9 @@ use Laravel\Sanctum\PersonalAccessToken;
  */
 class PasswordController extends Controller
 {
+    /** bcrypt only reads the first 72 bytes; longer secrets must be refused. */
+    private const PASSWORD_MAX = 72;
+
     public function edit(): View
     {
         return view('auth.password');
@@ -40,6 +43,7 @@ class PasswordController extends Controller
                 'required',
                 'string',
                 'min:8',
+                'max:'.self::PASSWORD_MAX,
                 'confirmed',
                 'different:current_password',
                 Rule::notIn(array_filter([settings()->studentInitialPassword()])),
