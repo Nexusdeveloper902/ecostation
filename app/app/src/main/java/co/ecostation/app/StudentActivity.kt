@@ -12,6 +12,7 @@ import android.widget.ListView
 import android.widget.TextView
 import co.ecostation.app.net.BackendDiscovery
 import co.ecostation.app.net.EcoEndpoint
+import co.ecostation.app.session.SessionGate
 import co.ecostation.app.student.ApiException
 import co.ecostation.app.student.Balance
 import co.ecostation.app.student.Deposit
@@ -71,14 +72,11 @@ class StudentActivity : Activity() {
     private var hasMore = false
 
     /**
-     * Incremented whenever a new session action starts. A background result
-     * from an older action (a stored-token check, a page load) checks this
-     * before touching the views, so it cannot hide a login the person just
-     * started.
+     * Serializes session actions, token writes and logout. A background
+     * result from an older action checks this before touching the views, and
+     * its token write is atomic with the check.
      */
-    private var epoch = 0
-
-    private fun nextEpoch(): Int = ++epoch
+    private val session = SessionGate()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -145,14 +143,14 @@ class StudentActivity : Activity() {
         // Validating a stored token can take a network round-trip: show the
         // loading state, and ignore its result if the person starts a login
         // (or logs out) meanwhile.
-        val expected = nextEpoch()
+        val expected = session.begin()
         showLoading()
         background {
             val api = api()
-            if (expected != epoch) return@background
+            if (!session.isCurrent(expected)) return@background
             if (api == null) {
                 ui {
-                    if (expected != epoch) return@ui
+                    if (!session.isCurrent(expected)) return@ui
                     showAccountError(R.string.student_error_no_server)
                 }
                 return@background
@@ -166,7 +164,7 @@ class StudentActivity : Activity() {
     private fun login() {
         val email = loginEmail.text.toString().trim()
         val password = loginPassword.text.toString()
-        val expected = nextEpoch()
+        val expected = session.begin()
         loginButton.isEnabled = false
         loginError.visibility = View.GONE
 
@@ -174,7 +172,7 @@ class StudentActivity : Activity() {
             val api = api()
             if (api == null) {
                 ui {
-                    if (expected != epoch) return@ui
+                    if (!session.isCurrent(expected)) return@ui
                     loginButton.isEnabled = true
                     loginError.setText(R.string.student_error_no_server)
                     loginError.visibility = View.VISIBLE
@@ -184,23 +182,22 @@ class StudentActivity : Activity() {
             try {
                 val result = api.login(email, password)
                 // Un hilo viejo no puede resucitar la sesión después de un
-                // logout: se comprueba la época ANTES de guardar el token.
-                if (expected != epoch) return@background
-                // Se guarda de inmediato, diga lo que diga must_change_password.
-                setToken(result.token)
+                // logout: la comprobación y la escritura del token son UN solo
+                // paso bajo el monitor de la sesión.
+                if (!session.saveIfCurrent(expected, result.token, ::setToken)) return@background
                 ui {
-                    if (expected != epoch) return@ui
+                    if (!session.isCurrent(expected)) return@ui
                     loginPassword.text.clear()
                     loginButton.isEnabled = true
                 }
                 if (result.mustChangePassword) {
-                    ui { if (expected == epoch) showChange() }
+                    ui { if (session.isCurrent(expected)) showChange() }
                 } else {
                     loadAccount(api, result.token, expected)
                 }
             } catch (e: ApiException) {
                 ui {
-                    if (expected != epoch) return@ui
+                    if (!session.isCurrent(expected)) return@ui
                     loginPassword.text.clear()
                     loginButton.isEnabled = true
                     loginError.setText(loginMessage(e))
@@ -208,7 +205,7 @@ class StudentActivity : Activity() {
                 }
             } catch (e: IOException) {
                 ui {
-                    if (expected != epoch) return@ui
+                    if (!session.isCurrent(expected)) return@ui
                     loginPassword.text.clear()
                     loginButton.isEnabled = true
                     loginError.setText(R.string.student_error_server)
@@ -234,7 +231,7 @@ class StudentActivity : Activity() {
             changeError.visibility = View.VISIBLE
             return
         }
-        val expected = epoch
+        val expected = session.current()
         changeButton.isEnabled = false
         changeError.visibility = View.GONE
 
@@ -242,7 +239,7 @@ class StudentActivity : Activity() {
             val api = api()
             if (api == null) {
                 ui {
-                    if (expected != epoch) return@ui
+                    if (!session.isCurrent(expected)) return@ui
                     changeButton.isEnabled = true
                     changeError.setText(R.string.student_error_no_server)
                     changeError.visibility = View.VISIBLE
@@ -252,7 +249,7 @@ class StudentActivity : Activity() {
             try {
                 api.changePassword(token, current, new, confirm)
                 ui {
-                    if (expected != epoch) return@ui
+                    if (!session.isCurrent(expected)) return@ui
                     changeCurrent.text.clear()
                     changeNew.text.clear()
                     changeConfirm.text.clear()
@@ -261,7 +258,7 @@ class StudentActivity : Activity() {
                 loadAccount(api, token, expected)
             } catch (e: ApiException) {
                 ui {
-                    if (expected != epoch) return@ui
+                    if (!session.isCurrent(expected)) return@ui
                     changeButton.isEnabled = true
                     if (e.kind == ApiException.Kind.UNAUTHORIZED) {
                         setToken(null)
@@ -275,7 +272,7 @@ class StudentActivity : Activity() {
                 }
             } catch (e: IOException) {
                 ui {
-                    if (expected != epoch) return@ui
+                    if (!session.isCurrent(expected)) return@ui
                     changeButton.isEnabled = true
                     changeError.setText(R.string.student_error_server)
                     changeError.visibility = View.VISIBLE
@@ -292,7 +289,7 @@ class StudentActivity : Activity() {
             val balance = api.balance(token)
             val history = api.history(token, 1)
             ui {
-                if (expectedEpoch != epoch) return@ui
+                if (!session.isCurrent(expectedEpoch)) return@ui
                 page = 1
                 hasMore = history.hasMore
                 rows.clear()
@@ -302,12 +299,12 @@ class StudentActivity : Activity() {
             }
         } catch (e: ApiException) {
             ui {
-                if (expectedEpoch != epoch) return@ui
+                if (!session.isCurrent(expectedEpoch)) return@ui
                 handleAccountError(e)
             }
         } catch (e: IOException) {
             ui {
-                if (expectedEpoch != epoch) return@ui
+                if (!session.isCurrent(expectedEpoch)) return@ui
                 showAccountError(R.string.student_error_server)
             }
         }
@@ -320,13 +317,13 @@ class StudentActivity : Activity() {
             return
         }
         val next = page + 1
-        val expected = epoch
+        val expected = session.current()
         moreButton.isEnabled = false
         background {
             val api = api()
             if (api == null) {
                 ui {
-                    if (expected != epoch) return@ui
+                    if (!session.isCurrent(expected)) return@ui
                     moreButton.isEnabled = true
                     showAccountError(R.string.student_error_no_server)
                 }
@@ -335,7 +332,7 @@ class StudentActivity : Activity() {
             try {
                 val history = api.history(token, next)
                 ui {
-                    if (expected != epoch) return@ui
+                    if (!session.isCurrent(expected)) return@ui
                     page = next
                     hasMore = history.hasMore
                     rows.addAll(history.items)
@@ -345,13 +342,13 @@ class StudentActivity : Activity() {
                 }
             } catch (e: ApiException) {
                 ui {
-                    if (expected != epoch) return@ui
+                    if (!session.isCurrent(expected)) return@ui
                     moreButton.isEnabled = true
                     handleAccountError(e)
                 }
             } catch (e: IOException) {
                 ui {
-                    if (expected != epoch) return@ui
+                    if (!session.isCurrent(expected)) return@ui
                     moreButton.isEnabled = true
                     showAccountError(R.string.student_error_server)
                 }
@@ -382,11 +379,15 @@ class StudentActivity : Activity() {
     /**
      * Sale primero en local (el token se borra antes de la red); el borrado en
      * el servidor es best-effort. El correo escrito se conserva para volver a
-     * entrar, y la llave HCE nunca se toca.
+     * entrar, y la llave HCE nunca se toca. La época, la lectura del token a
+     * revocar y su borrado ocurren bajo el mismo monitor: un login viejo no
+     * puede restaurarlo.
      */
     private fun logout() {
-        val token = settings.studentToken
-        setToken(null)
+        val token = session.end(
+            read = { settings.studentToken },
+            clear = { setToken(null) },
+        )
         endpoint = null
         showLogin(null)
         if (token.isNullOrBlank()) return
@@ -449,7 +450,7 @@ class StudentActivity : Activity() {
 
     private fun showLogin(message: String?) {
         // Cualquier respuesta en vuelo pertenece a una acción anterior.
-        nextEpoch()
+        session.begin()
         loadingGroup.visibility = View.GONE
         loginGroup.visibility = View.VISIBLE
         changeGroup.visibility = View.GONE
