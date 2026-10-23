@@ -2,11 +2,16 @@
 
 use App\Http\Controllers\Web\AuthController;
 use App\Http\Controllers\Web\DepositPhotoController;
+use App\Http\Controllers\Web\ManifestController;
 use App\Http\Controllers\Web\PasswordController;
 use App\Http\Controllers\Web\RealtimeTokenController;
 use App\Support\HomeTarget;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+
+// Public discovery endpoint: the Android subnet-sweep probe reads it
+// without a session (and it can never sit behind the password wall).
+Route::get('/manifest.webmanifest', [ManifestController::class, 'show'])->name('manifest');
 
 // Landing -> login (or the role-appropriate page when authenticated).
 Route::get('/', function (Request $request) {

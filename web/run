@@ -8,11 +8,65 @@ usage() {
 Uso: ./run <comando>
 
   setup   instala dependencias, crea .env y la base SQLite, migra y siembra
-  serve   levanta la app en http://localhost:8000
+  serve   levanta la app, el feed en vivo y las tareas programadas en :8000
   test    ejecuta las pruebas (los argumentos pasan a `php artisan test`)
   ci      Pint + pruebas, igual que la integración continua
+
+`serve` publica el servicio _ecostation._tcp en la LAN cuando avahi o
+python3 están disponibles; ECOSTATION_MDNS=0 desactiva ese anuncio.
 USO
     exit 2
+}
+
+serve() {
+    local pids=()
+    local mdns="${ECOSTATION_MDNS:-1}"
+
+    cleanup() {
+        trap - EXIT INT TERM
+        local pid
+        for pid in "${pids[@]:-}"; do
+            [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+        done
+        wait 2>/dev/null || true
+    }
+    trap cleanup EXIT INT TERM
+
+    # Los tres procesos del servidor de desarrollo.
+    php artisan serve --host=0.0.0.0 --port=8000 &
+    pids+=("$!")
+
+    php artisan realtime:serve &
+    pids+=("$!")
+
+    php artisan schedule:work &
+    pids+=("$!")
+
+    if [ "$mdns" != "0" ]; then
+        if command -v avahi-publish-service >/dev/null 2>&1; then
+            avahi-publish-service EcoStation _ecostation._tcp 8000 version=1 protocol=1 api=/api &
+            pids+=("$!")
+        else
+            echo "avahi-publish-service no encontrado: se omite el anuncio _ecostation._tcp." >&2
+        fi
+
+        if command -v python3 >/dev/null 2>&1; then
+            python3 scripts/mdns/announce.py --port 8000 &
+            pids+=("$!")
+        else
+            echo "python3 no encontrado: se omite el reanuncio mDNS." >&2
+        fi
+    else
+        echo "Anuncio mDNS desactivado (ECOSTATION_MDNS=0)."
+    fi
+
+    echo
+    echo "  App:     http://0.0.0.0:8000"
+    echo "  En vivo: ws://0.0.0.0:${REALTIME_PORT:-8081}"
+    echo "  Detener: Ctrl+C"
+    echo
+
+    wait
 }
 
 case "${1:-}" in
@@ -28,7 +82,7 @@ case "${1:-}" in
         echo "           y un estudiante por cuenta (maria@, carlos@, ana@, diego@, lucia@ecostation.test)"
         echo "  clave:   password"
         ;;
-    serve) php artisan serve --host=0.0.0.0 --port=8000 ;; # ponytail: solo web; el feed en tiempo real se añade en la Tarea 15
+    serve) serve ;;
     test) shift; php artisan test "$@" ;;
     ci) vendor/bin/pint --test && php artisan test ;;
     *) usage ;;
