@@ -6,6 +6,8 @@ use App\Http\Controllers\Web\ManifestController;
 use App\Http\Controllers\Web\PasswordController;
 use App\Http\Controllers\Web\RealtimeTokenController;
 use App\Http\Controllers\Web\StudentController;
+use App\Http\Controllers\Web\TeacherDashboardController;
+use App\Http\Controllers\Web\TeacherExportController;
 use App\Support\HomeTarget;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -67,5 +69,20 @@ Route::middleware('auth')->group(function () {
         Route::get('/student', [StudentController::class, 'dashboard'])->name('student.dashboard');
         Route::get('/student/history', [StudentController::class, 'history'])->name('student.history');
         Route::get('/student/leaderboard', [StudentController::class, 'leaderboard'])->name('student.leaderboard');
+    });
+
+    // Teacher reporting: scoped by StudentScope inside every action.
+    Route::middleware('role:admin,teacher')->group(function () {
+        Route::get('/teacher', [TeacherDashboardController::class, 'dashboard'])->name('teacher.dashboard');
+        Route::get('/teacher/classes/{class}', [TeacherDashboardController::class, 'showClass'])->name('teacher.class');
+        Route::get('/teacher/students/{student}', [TeacherDashboardController::class, 'showStudent'])->name('teacher.student');
+        Route::get('/teacher/live', [TeacherDashboardController::class, 'live'])->name('teacher.live');
+
+        Route::get('/teacher/export.csv', [TeacherExportController::class, 'csv'])->name('teacher.export.csv');
+        Route::get('/teacher/export.pdf', [TeacherExportController::class, 'pdf'])->name('teacher.export.pdf');
+        Route::get('/teacher/students/{student}/export.csv', [TeacherExportController::class, 'studentCsv'])
+            ->name('teacher.student.export.csv');
+        Route::get('/teacher/students/{student}/export.pdf', [TeacherExportController::class, 'studentPdf'])
+            ->name('teacher.student.export.pdf');
     });
 });
