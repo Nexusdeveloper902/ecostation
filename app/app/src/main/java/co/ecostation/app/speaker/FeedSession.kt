@@ -47,57 +47,78 @@ class FeedSession(private val email: String, private val password: String) {
     /** null = not authenticated (the caller logs in). */
     private fun mint(endpoint: EcoEndpoint, jar: MutableMap<String, String>): Ticket? {
         val conn = open(endpoint, "/realtime/token", jar)
-        conn.setRequestProperty("Accept", "application/json")
-        val code = conn.responseCode
-        absorbCookies(conn, jar)
-        return when (code) {
-            200 -> {
-                val json = JSONObject(BoundedRead.read(conn.inputStream, BoundedRead.JSON_MAX))
-                val token = json.getString("token")
-                // The backend builds the ws:// URL from the Host we dialled,
-                // so it already points at the discovered address.
-                val base = json.optString("url").ifEmpty { "ws://${endpoint.host}:8081/app" }
-                Ticket("$base?token=" + URLEncoder.encode(token, "UTF-8"))
-                    .also { conn.disconnect() }
+        try {
+            conn.setRequestProperty("Accept", "application/json")
+            val code = conn.responseCode
+            absorbCookies(conn, jar)
+            return when (code) {
+                200 -> {
+                    val json = JSONObject(BoundedRead.read(conn.inputStream, BoundedRead.JSON_MAX))
+                    val token = json.getString("token")
+                    // The backend builds the ws:// URL from the Host we dialled,
+                    // so it already points at the discovered address.
+                    val base = json.optString("url").ifEmpty { "ws://${endpoint.host}:8081/app" }
+                    Ticket("$base?token=" + URLEncoder.encode(token, "UTF-8"))
+                }
+                401, 302, 419 -> null
+                else -> throw IOException("GET /realtime/token respondió HTTP $code")
             }
-            401, 302, 419 -> null.also { conn.disconnect() }
-            else -> throw IOException("GET /realtime/token respondió HTTP $code").also { conn.disconnect() }
+        } finally {
+            conn.disconnect()
         }
     }
 
     private fun login(endpoint: EcoEndpoint, jar: MutableMap<String, String>) {
         jar.clear()
-        val page = open(endpoint, "/login", jar)
-        val pageCode = page.responseCode
-        absorbCookies(page, jar)
-        if (pageCode == 429) throw Throttled()
-        // Every failed exchange on the login routes is an authentication
-        // failure, so the bridge applies its 30 s backoff instead of hammering
-        // /login (5 attempts/minute). Only socket/connect errors stay fast.
-        if (pageCode != 200) throw LoginRejected("GET /login respondió HTTP $pageCode")
-        val html = BoundedRead.read(page.inputStream, BoundedRead.SMALL_MAX)
-        page.disconnect()
+        val html = readLoginPage(endpoint, jar)
         val csrf = csrfToken(html)
             ?: throw LoginRejected("no hay token CSRF en /login — ¿el servidor es EcoStation?")
 
         val post = open(endpoint, "/login", jar)
-        post.requestMethod = "POST"
-        post.doOutput = true
-        post.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-        val body = listOf("_token" to csrf, "email" to email, "password" to password)
-            .joinToString("&") { (k, v) -> k + "=" + URLEncoder.encode(v, "UTF-8") }
-        post.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-        val code = post.responseCode
-        absorbCookies(post, jar)
-        val location = post.getHeaderField("Location").orEmpty()
-        post.disconnect()
-        when {
-            code == 429 -> throw Throttled()
-            // A failed attempt redirects back to the login form.
-            code == 302 && location.substringBefore('?').endsWith("/login") ->
-                throw LoginRejected("la cuenta del parlante no puede iniciar sesión: revisa su correo y contraseña")
-            // 419 (CSRF), 500, a malformed redirect, anything else: auth failure.
-            code != 302 -> throw LoginRejected("POST /login respondió HTTP $code — revisa la cuenta del parlante")
+        try {
+            post.requestMethod = "POST"
+            post.doOutput = true
+            post.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            val body = listOf("_token" to csrf, "email" to email, "password" to password)
+                .joinToString("&") { (k, v) -> k + "=" + URLEncoder.encode(v, "UTF-8") }
+            post.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            val code = post.responseCode
+            absorbCookies(post, jar)
+            val location = post.getHeaderField("Location").orEmpty()
+            when {
+                code == 429 -> throw Throttled()
+                // A failed attempt redirects back to the login form.
+                code == 302 && location.substringBefore('?').endsWith("/login") ->
+                    throw LoginRejected("la cuenta del parlante no puede iniciar sesión: revisa su correo y contraseña")
+                // 419 (CSRF), 500, a malformed redirect, anything else: auth failure.
+                code != 302 -> throw LoginRejected("POST /login respondió HTTP $code — revisa la cuenta del parlante")
+            }
+        } finally {
+            post.disconnect()
+        }
+    }
+
+    /**
+     * Every failed exchange on the login routes is an authentication failure,
+     * so the bridge applies its 30 s backoff instead of hammering /login
+     * (5 attempts/minute). Only opening/connecting stays a transport error for
+     * a fast retry; an oversized or broken page BODY is a bad server answer
+     * and must not bypass the backoff.
+     */
+    private fun readLoginPage(endpoint: EcoEndpoint, jar: MutableMap<String, String>): String {
+        val page = open(endpoint, "/login", jar)
+        try {
+            val pageCode = page.responseCode
+            absorbCookies(page, jar)
+            if (pageCode == 429) throw Throttled()
+            if (pageCode != 200) throw LoginRejected("GET /login respondió HTTP $pageCode")
+            return try {
+                BoundedRead.read(page.inputStream, BoundedRead.SMALL_MAX)
+            } catch (e: IOException) {
+                throw LoginRejected("respuesta de /login no válida")
+            }
+        } finally {
+            page.disconnect()
         }
     }
 

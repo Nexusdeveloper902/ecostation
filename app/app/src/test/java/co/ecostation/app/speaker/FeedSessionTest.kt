@@ -86,6 +86,17 @@ class FeedSessionTest {
         }
     }
 
+    @Test
+    fun an_oversized_login_page_is_a_rejection_not_a_fast_transport_retry() {
+        FakeBackend(oversizedLogin = true).use { backend ->
+            val session = FeedSession("station@ecostation.test", "password")
+            val e = assertThrows(FeedSession.LoginRejected::class.java) {
+                session.ticket(EcoEndpoint("127.0.0.1", backend.port))
+            }
+            assertEquals("respuesta de /login no válida", e.message)
+        }
+    }
+
     /**
      * The routes the bridge touches, with Laravel's observable behaviour,
      * over a raw socket (the android.jar test classpath has no
@@ -95,6 +106,7 @@ class FeedSessionTest {
         private val refuseFeed: Boolean = false,
         private val postStatus: Int? = null,
         private val omitCsrf: Boolean = false,
+        private val oversizedLogin: Boolean = false,
     ) : AutoCloseable {
         private val socket = ServerSocket(0)
         val port get() = socket.localPort
@@ -137,8 +149,11 @@ class FeedSessionTest {
             when {
                 path == "/login" && method == "GET" -> {
                     extra.append("Set-Cookie: ecostation_session=guest${counter++}; path=/; httponly\r\n")
-                    content = if (omitCsrf) "<html></html>"
-                    else """<input type="hidden" name="_token" value="csrf-1" autocomplete="off">"""
+                    content = when {
+                        oversizedLogin -> "x".repeat(70_000)
+                        omitCsrf -> "<html></html>"
+                        else -> """<input type="hidden" name="_token" value="csrf-1" autocomplete="off">"""
+                    }
                 }
                 path == "/login" -> {
                     if (postStatus != null) {

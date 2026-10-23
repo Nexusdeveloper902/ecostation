@@ -183,6 +183,9 @@ class StudentActivity : Activity() {
             }
             try {
                 val result = api.login(email, password)
+                // Un hilo viejo no puede resucitar la sesión después de un
+                // logout: se comprueba la época ANTES de guardar el token.
+                if (expected != epoch) return@background
                 // Se guarda de inmediato, diga lo que diga must_change_password.
                 setToken(result.token)
                 ui {
