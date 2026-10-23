@@ -22,6 +22,14 @@ serve() {
     local pids=()
     local mdns="${ECOSTATION_MDNS:-1}"
 
+    # Preflight: sin APP_KEY fuerte el feed en vivo firmaría tokens
+    # forjables. Se niega antes de levantar ningún proceso.
+    if ! php artisan realtime:serve --check >/dev/null 2>&1; then
+        echo "No se puede iniciar: APP_KEY está vacía o es demasiado corta (mínimo 32 bytes)." >&2
+        echo "Genera una con: php artisan key:generate" >&2
+        return 1
+    fi
+
     cleanup() {
         trap - EXIT INT TERM
         local pid

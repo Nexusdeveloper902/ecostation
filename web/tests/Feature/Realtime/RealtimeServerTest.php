@@ -19,7 +19,7 @@ use Tests\TestCase;
  */
 class RealtimeServerTest extends TestCase
 {
-    private const APP_KEY = 'realtime-server-test-key';
+    private const APP_KEY = 'realtime-server-test-key-0123456789ab';
 
     private const STUDENTS = ['Maria González', 'Diego López'];
 

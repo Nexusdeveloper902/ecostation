@@ -8,11 +8,12 @@ use Tests\TestCase;
 
 /**
  * Tokens del feed: emisión/verificación, caducidad, manipulación y
- * clave equivocada.
+ * clave equivocada. La firma falla CERRADA cuando APP_KEY no sirve:
+ * sin clave no hay token verificable ni forjable.
  */
 class RealtimeTokenTest extends TestCase
 {
-    private const APP_KEY = 'realtime-test-key';
+    private const APP_KEY = 'realtime-test-key-0123456789abcdef';
 
     protected function setUp(): void
     {
@@ -63,7 +64,7 @@ class RealtimeTokenTest extends TestCase
     {
         $token = RealtimeToken::issue(7, time() + 300);
 
-        config(['app.key' => 'somebody-elses-key']);
+        config(['app.key' => 'somebody-elses-key-0123456789abc']);
 
         $this->assertNull(RealtimeToken::verify($token));
     }
@@ -77,5 +78,43 @@ class RealtimeTokenTest extends TestCase
 
         $this->assertNotNull(RealtimeToken::verify($token));
         $this->assertEqualsWithDelta(time() + 600, RealtimeToken::freshExpiry(), 2);
+    }
+
+    #[Test]
+    public function an_empty_app_key_cannot_verify_or_mint_tokens(): void
+    {
+        config(['app.key' => '']);
+
+        $this->assertFalse(RealtimeToken::hasUsableKey());
+        $this->assertNull(RealtimeToken::verify('7.'.(time() + 300).'.anything'));
+
+        // A token forged with the empty key (what HMAC would produce) is
+        // rejected too: verification never degrades to a known secret.
+        $expiry = time() + 300;
+        $forged = '7.'.$expiry.'.'.hash_hmac('sha256', 'realtime:7.'.$expiry, '');
+        $this->assertNull(RealtimeToken::verify($forged));
+
+        $this->expectException(\RuntimeException::class);
+        RealtimeToken::issue(7);
+    }
+
+    #[Test]
+    public function a_short_app_key_is_not_a_usable_signing_key(): void
+    {
+        foreach (['realtime-test-key', 'short', 'base64:'.base64_encode('too-short')] as $key) {
+            config(['app.key' => $key]);
+
+            $this->assertFalse(RealtimeToken::hasUsableKey(), $key);
+            $this->assertNull(RealtimeToken::verify('7.'.(time() + 300).'.deadbeef'));
+        }
+    }
+
+    #[Test]
+    public function a_valid_base64_app_key_is_accepted(): void
+    {
+        config(['app.key' => 'base64:'.base64_encode(random_bytes(32))]);
+
+        $this->assertTrue(RealtimeToken::hasUsableKey());
+        $this->assertSame(9, RealtimeToken::verify(RealtimeToken::issue(9)));
     }
 }

@@ -37,7 +37,8 @@ class RealtimeServeCommand extends Command
 {
     protected $signature = 'realtime:serve
         {--host= : Interfaz de escucha (por defecto config realtime.host)}
-        {--port= : Puerto (por defecto config realtime.port)}';
+        {--port= : Puerto (por defecto config realtime.port)}
+        {--check : Solo verifica APP_KEY y la configuración, sin abrir el socket}';
 
     protected $description = 'Sirve el canal en vivo por WebSockets (tap, recycling, feedback, pairing)';
 
@@ -78,6 +79,21 @@ class RealtimeServeCommand extends Command
         $this->tapFeedback = $tapFeedback;
         $this->pairing = $pairing;
         $this->recycling = $recycling;
+
+        // Sin APP_KEY utilizable no hay firma verificable: el feed se
+        // niega a arrancar en vez de aceptar tokens forjables.
+        if (! RealtimeToken::hasUsableKey()) {
+            $this->error('realtime:serve no puede arrancar: APP_KEY está vacía o es demasiado corta (mínimo 32 bytes).');
+            $this->error('Genera una clave con: php artisan key:generate');
+
+            return self::FAILURE;
+        }
+
+        if ((bool) $this->option('check')) {
+            $this->info('Configuración en vivo correcta: APP_KEY utilizable.');
+
+            return self::SUCCESS;
+        }
 
         $host = (string) ($this->option('host') ?: config('realtime.host'));
         $port = (int) ($this->option('port') ?: config('realtime.port'));
