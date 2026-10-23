@@ -11,23 +11,46 @@ use Illuminate\Support\Carbon;
 /**
  * Presentation-ready recycling report PDFs.
  *
- * The header shows the product name only (there is no school brand in
- * EcoStation). The palette lives in protected constants so the UI-skin
- * task can change print colors in one place.
+ * Brand palette and the horizontal EcoStation logo live in this single
+ * class: the header carries the product brand only (there is no school
+ * brand in EcoStation), and material cells keep the on-screen colors so
+ * a printed report still reads like the dashboard.
  */
 class RecyclingReportPdf
 {
-    protected const PRIMARY = '#1F4E3D';
+    protected const PRIMARY = '#0B7A47';
 
-    protected const GOLD = '#F5CB5C';
+    protected const SUN = '#FFC93C';
 
-    protected const SAGE = '#CFDBD5';
+    protected const INK = '#0F2A2E';
 
-    protected const PAPER = '#E8EDDF';
+    protected const SLATE = '#4A6468';
 
-    protected const MUTED = '#6B6F6D';
+    protected const MINT = '#F2FAF6';
 
-    protected const TEXT = '#242423';
+    protected const MIST = '#DCEBE6';
+
+    protected const WHITE = '#FFFFFF';
+
+    /** @var array<string, string> */
+    protected const MATERIAL_LABELS = [
+        'plastic' => 'Plástico',
+        'metal' => 'Metal',
+        'glass' => 'Vidrio',
+        'paper' => 'Papel',
+        'other' => 'Otro',
+    ];
+
+    /** @var array<string, array{0: string, 1: string}> foreground / background */
+    protected const MATERIAL_COLORS = [
+        'plastic' => ['#2A78D6', '#E3EEFB'],
+        'metal' => ['#EB6834', '#FDEAE1'],
+        'glass' => ['#14B8B0', '#E2F5EE'],
+        'paper' => ['#EDA100', '#FFF4D6'],
+        'other' => ['#E87BA4', '#FCEAF1'],
+    ];
+
+    private ?string $logoCache = null;
 
     public function __construct(
         private readonly RecyclingReportService $reports,
@@ -49,14 +72,7 @@ class RecyclingReportPdf
             'Periodo', $this->prettyDate($from).' — '.$this->prettyDate($to),
         );
 
-        $body .= $this->tableSection('Mezcla de materiales', [
-            ['Material', 'Ítems', 'Puntos', 'Valor'],
-        ], array_map(fn ($material) => [
-            (string) $material,
-            (string) $mix[$material]['items'],
-            (string) $mix[$material]['points'],
-            $mix[$material]['rate'].' pts',
-        ], array_keys($mix)));
+        $body .= $this->materialMixTable($mix);
 
         $body .= $this->tableSection('Cursos', [
             ['Curso', 'Ítems', 'Puntos'],
@@ -72,9 +88,9 @@ class RecyclingReportPdf
     {
         $history = $this->reports->studentHistory($student, 30);
 
-        $body = '<p style="margin:0 0 12px;font-size:14px;color:'.self::TEXT.';">'
+        $body = '<p style="margin:0 0 12px;font-size:14px;color:'.self::INK.';">'
             .e($student->name)
-            .' <span style="color:'.self::MUTED.';">· '.e((string) ($student->schoolClass?->name ?? 'Sin curso')).'</span></p>';
+            .' <span style="color:'.self::SLATE.';">· '.e((string) ($student->schoolClass?->name ?? 'Sin curso')).'</span></p>';
 
         $body .= $this->summaryRow(
             'Depósitos', (string) $history['totals']['items'],
@@ -82,17 +98,7 @@ class RecyclingReportPdf
             'Periodo', 'Últimos 30 días',
         );
 
-        $rows = array_map(fn (array $row) => [
-            $row['date'].' '.$row['time'],
-            $row['material'],
-            (string) $row['points'],
-            $row['is_recyclable'] ? 'Sí' : 'No',
-            (string) ($row['reader'] ?? '—'),
-        ], $history['deposits']);
-
-        $body .= $this->tableSection('Historial de depósitos', [
-            ['Fecha', 'Material', 'Puntos', 'Reciclable', 'Estación'],
-        ], $rows);
+        $body .= $this->studentHistoryTable($history['deposits']);
 
         return $this->render(
             'Reporte de '.$student->name,
@@ -104,7 +110,11 @@ class RecyclingReportPdf
     private function render(string $title, string $period, string $body): Response
     {
         $html = '<html><head><meta charset="utf-8">'
-            .'<style>body{font-family:DejaVu Sans,sans-serif;font-size:10px;color:'.self::TEXT.';}</style>'
+            .'<style>'
+            .'body{font-family:DejaVu Sans,sans-serif;font-size:10px;color:'.self::INK.';line-height:1.45;}'
+            .'table{border-collapse:collapse;}'
+            .'span,td,th{word-wrap:break-word;}'
+            .'</style>'
             .'</head><body>'
             .$this->header($title, $period)
             .$body
@@ -128,30 +138,103 @@ class RecyclingReportPdf
 
     private function header(string $title, string $period): string
     {
-        return '<table style="width:100%;background-color:'.self::PRIMARY.';border-collapse:collapse;" cellpadding="10"><tr>'
-            .'<td style="width:30%;"><span style="color:'.self::GOLD.';font-size:20px;font-weight:bold;">'
-            .e((string) config('app.name')).'</span></td>'
-            .'<td style="color:'.self::PAPER.';font-size:14px;text-align:right;">'
-            .e($title).'<br><span style="font-size:10px;color:'.self::SAGE.';">'.e($period).'</span></td>'
-            .'</tr></table><div style="height:14px;"></div>';
+        $logo = $this->logoDataUri();
+
+        $logoHtml = $logo !== null
+            ? '<img src="'.$logo.'" alt="EcoStation" style="height:42px;width:auto;">'
+            : '<span style="color:'.self::PRIMARY.';font-size:20px;font-weight:bold;">EcoStation</span>';
+
+        return '<table style="width:100%;background-color:'.self::MINT
+            .';border-bottom:3px solid '.self::PRIMARY.';" cellpadding="0" cellspacing="0"><tr>'
+            .'<td style="width:46%;padding:14px 16px;">'.$logoHtml.'</td>'
+            .'<td style="padding:14px 16px;text-align:right;">'
+            .'<span style="color:'.self::INK.';font-size:18px;font-weight:bold;">'.e($title).'</span><br>'
+            .'<span style="color:'.self::SLATE.';font-size:10px;">'.e($period).'</span>'
+            .'</td></tr></table><div style="height:16px;"></div>';
     }
 
     private function summaryRow(string $labelA, string $valueA, string $labelB, string $valueB, string $labelC, string $valueC): string
     {
         $cells = '';
-        foreach ([$labelA => $valueA, $labelB => $valueB, $labelC => $valueC] as $label => $value) {
-            $cells .= '<td style="background-color:'.self::SAGE.';padding:10px;width:33%;border:1px solid '.self::PAPER.';">'
-                .'<span style="font-size:9px;color:'.self::MUTED.';">'.e($label).'</span><br>'
-                .'<span style="font-size:20px;color:'.self::TEXT.';">'.e($value).'</span></td>';
+
+        foreach ([
+            [$labelA, $valueA, 20],
+            [$labelB, $valueB, 20],
+            [$labelC, $valueC, 13],
+        ] as [$label, $value, $size]) {
+            $cells .= '<td style="background-color:'.self::MINT.';padding:12px;width:33%;border:1px solid '.self::MIST.';">'
+                .'<span style="font-size:9px;color:'.self::SLATE.';text-transform:uppercase;letter-spacing:0.06em;">'
+                .e($label).'</span><br>'
+                .'<span style="font-family:DejaVu Sans Mono,monospace;font-size:'.$size.'px;color:'.self::INK.';">'
+                .e($value).'</span></td>';
         }
 
-        return '<table style="width:100%;border-collapse:collapse;margin-bottom:14px;"><tr>'.$cells.'</tr></table>';
+        return '<table style="width:100%;margin-bottom:16px;"><tr>'.$cells.'</tr></table>';
+    }
+
+    /**
+     * Material mix with the same tinted chips the web table uses.
+     *
+     * @param  array<string, array{items: int, points: int, rate: int}>  $mix
+     */
+    private function materialMixTable(array $mix): string
+    {
+        $rows = '';
+
+        foreach ($mix as $material => $data) {
+            $rows .= '<tr style="background-color:'.self::WHITE.';">'
+                .'<td style="padding:6px 8px;border:1px solid '.self::MIST.';font-size:10px;">'
+                .$this->materialBadge((string) $material).'</td>'
+                .'<td style="padding:6px 8px;border:1px solid '.self::MIST.';font-size:10px;">'.e((string) $data['items']).'</td>'
+                .'<td style="padding:6px 8px;border:1px solid '.self::MIST.';font-size:10px;">'.e((string) $data['points']).'</td>'
+                .'<td style="padding:6px 8px;border:1px solid '.self::MIST.';font-size:10px;">'.e($data['rate'].' pts').'</td>'
+                .'</tr>';
+        }
+
+        if ($rows === '') {
+            $rows = '<tr><td colspan="4" style="padding:8px;border:1px solid '.self::MIST
+                .';color:'.self::SLATE.';font-size:10px;">Sin datos para el periodo.</td></tr>';
+        }
+
+        return $this->section('Mezcla de materiales', '<table style="width:100%;">'
+            .$this->tableHead(['Material', 'Ítems', 'Puntos', 'Valor'])
+            .$rows.'</table>');
+    }
+
+    /**
+     * @param  array<int, array{deposit_id: int, date: string, time: string, class_name: ?string, material: string, points: int, is_bottle: bool, is_recyclable: bool, has_photo: bool, reader: ?string}>  $deposits
+     */
+    private function studentHistoryTable(array $deposits): string
+    {
+        $rows = '';
+
+        foreach ($deposits as $index => $row) {
+            $background = $index % 2 === 1 ? self::MINT : self::WHITE;
+
+            $rows .= '<tr style="background-color:'.$background.';">'
+                .'<td style="padding:5px 8px;border:1px solid '.self::MIST.';font-size:9px;">'.e($row['date'].' '.$row['time']).'</td>'
+                .'<td style="padding:5px 8px;border:1px solid '.self::MIST.';font-size:9px;">'.$this->materialBadge($row['material']).'</td>'
+                .'<td style="padding:5px 8px;border:1px solid '.self::MIST.';font-size:9px;">'.e((string) $row['points']).'</td>'
+                .'<td style="padding:5px 8px;border:1px solid '.self::MIST.';font-size:9px;">'.($row['is_recyclable'] ? 'Sí' : 'No').'</td>'
+                .'<td style="padding:5px 8px;border:1px solid '.self::MIST.';font-size:9px;">'.e((string) ($row['reader'] ?? '—')).'</td>'
+                .'</tr>';
+        }
+
+        if ($rows === '') {
+            $rows = '<tr><td colspan="5" style="padding:8px;border:1px solid '.self::MIST
+                .';color:'.self::SLATE.';font-size:10px;">Sin datos para el periodo.</td></tr>';
+        }
+
+        return $this->section('Historial de depósitos', '<table style="width:100%;">'
+            .$this->tableHead(['Fecha', 'Material', 'Puntos', 'Reciclable', 'Estación'])
+            .$rows.'</table>');
     }
 
     private function section(string $title, string $content): string
     {
-        return '<p style="margin:0 0 6px;font-size:12px;border-bottom:2px solid '.self::GOLD.';padding-bottom:3px;">'
-            .e($title).'</p>'.$content.'<div style="height:12px;"></div>';
+        return '<p style="margin:0 0 6px;font-size:12px;color:'.self::INK
+            .';border-bottom:2px solid '.self::SUN.';padding-bottom:3px;font-weight:bold;">'
+            .e($title).'</p>'.$content.'<div style="height:14px;"></div>';
     }
 
     /**
@@ -161,35 +244,80 @@ class RecyclingReportPdf
     private function tableSection(string $title, array $headerRow, array $rows): string
     {
         $rowsHtml = '';
-        foreach ($rows as $i => $row) {
-            $bg = $i % 2 === 1 ? self::PAPER : '#FFFFFF';
+
+        foreach ($rows as $index => $row) {
+            $background = $index % 2 === 1 ? self::MINT : self::WHITE;
             $cells = '';
+
             foreach ($row as $cell) {
-                $cells .= '<td style="padding:5px 8px;border:1px solid '.self::SAGE.';font-size:10px;">'.e((string) $cell).'</td>';
+                $cells .= '<td style="padding:5px 8px;border:1px solid '.self::MIST.';font-size:10px;">'
+                    .e((string) $cell).'</td>';
             }
-            $rowsHtml .= '<tr style="background-color:'.$bg.';">'.$cells.'</tr>';
+
+            $rowsHtml .= '<tr style="background-color:'.$background.';">'.$cells.'</tr>';
         }
 
         if ($rows === []) {
-            $rowsHtml = '<tr><td colspan="'.max(1, count($headerRow[0])).'" style="padding:8px;border:1px solid '.self::SAGE
-                .';color:'.self::MUTED.';font-size:10px;">Sin datos para el periodo.</td></tr>';
+            $rowsHtml = '<tr><td colspan="'.max(1, count($headerRow[0])).'" style="padding:8px;border:1px solid '.self::MIST
+                .';color:'.self::SLATE.';font-size:10px;">Sin datos para el periodo.</td></tr>';
         }
 
-        $headCells = '';
-        foreach ($headerRow[0] as $cell) {
-            $headCells .= '<td style="padding:5px 8px;background-color:'.self::PRIMARY.';color:'.self::PAPER
-                .';font-size:9px;border:1px solid '.self::PRIMARY.';">'.e((string) $cell).'</td>';
+        return $this->section($title, '<table style="width:100%;">'
+            .$this->tableHead($headerRow[0]).$rowsHtml.'</table>');
+    }
+
+    /**
+     * @param  array<int, string>  $cells
+     */
+    private function tableHead(array $cells): string
+    {
+        $html = '';
+
+        foreach ($cells as $cell) {
+            $html .= '<td style="padding:6px 8px;background-color:'.self::PRIMARY.';color:'.self::WHITE
+                .';font-size:9px;font-weight:bold;border:1px solid '.self::PRIMARY.';">'.e((string) $cell).'</td>';
         }
 
-        return $this->section($title, '<table style="width:100%;border-collapse:collapse;"><tr>'.$headCells.'</tr>'.$rowsHtml.'</table>');
+        return '<tr>'.$html.'</tr>';
+    }
+
+    private function materialBadge(string $material): string
+    {
+        $label = self::MATERIAL_LABELS[$material] ?? mb_convert_case($material, MB_CASE_TITLE, 'UTF-8');
+        [$foreground, $background] = self::MATERIAL_COLORS[$material] ?? [self::SLATE, self::MIST];
+
+        return '<span style="display:inline-block;padding:2px 7px;border-radius:8px;background-color:'
+            .$background.';color:'.$foreground.';font-size:9px;font-weight:bold;">'.e($label).'</span>';
     }
 
     private function footer(): string
     {
-        return '<div style="height:18px;"></div><table style="width:100%;border-collapse:collapse;"><tr>'
-            .'<td style="font-size:8px;color:'.self::MUTED.';">'.e((string) config('app.name')).' · Reciclaje</td>'
-            .'<td style="font-size:8px;color:'.self::MUTED.';text-align:right;">'
-            .e(now()->format('Y-m-d H:i')).'</td></tr></table>';
+        return '<div style="height:18px;"></div><table style="width:100%;border-top:1px solid '.self::MIST.';">'
+            .'<tr><td style="padding-top:6px;font-size:8px;color:'.self::SLATE.';">EcoStation · America/Bogota</td>'
+            .'<td style="padding-top:6px;font-size:8px;color:'.self::SLATE.';text-align:right;">'
+            .'Generado '.e(now()->timezone((string) config('app.timezone'))->format('d/m/Y H:i')).'</td></tr></table>';
+    }
+
+    /** Embed the horizontal brand logo without granting dompdf remote access. */
+    private function logoDataUri(): ?string
+    {
+        if ($this->logoCache !== null) {
+            return $this->logoCache;
+        }
+
+        $path = public_path('img/ecostation-horizontal.png');
+
+        if (! is_file($path)) {
+            return null;
+        }
+
+        $contents = @file_get_contents($path);
+
+        if ($contents === false || $contents === '') {
+            return null;
+        }
+
+        return $this->logoCache = 'data:image/png;base64,'.base64_encode($contents);
     }
 
     private function prettyDate(string $date): string

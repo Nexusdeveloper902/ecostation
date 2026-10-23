@@ -57,6 +57,16 @@ class PairingService
     }
 
     /**
+     * Cancel the armed window without pairing anything: the desk's
+     * "Cancelar" action. Expiring the row (instead of deleting it) keeps
+     * the audit trail and makes a late tap answer `no_session`.
+     */
+    public function cancel(): int
+    {
+        return PendingPairing::active()->update(['expires_at' => now()]);
+    }
+
+    /**
      * Completed pairings (consumed + card stamped), newest first.
      *
      * @return Collection<int, PendingPairing>

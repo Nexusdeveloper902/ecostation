@@ -10,6 +10,7 @@ use App\Models\PresenceEvent;
 use App\Models\RecyclingDeposit;
 use App\Models\SchoolClass;
 use App\Models\Student;
+use App\Services\PairingService;
 use App\Services\PointsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
@@ -217,6 +218,50 @@ class AdminPairingTest extends TestCase
             ->post('/admin/pairing/arm', ['student_id' => $other->id])
             ->assertRedirect();
         $this->pair($newPhone)->assertStatus(422);
+    }
+
+    #[Test]
+    public function cancelling_the_armed_window_closes_it(): void
+    {
+        $student = $this->studentWithoutCard();
+
+        $this->actingAs($this->admin())
+            ->post('/admin/pairing/arm', ['student_id' => $student->id])
+            ->assertRedirect();
+
+        $this->assertNotNull(app(PairingService::class)->activeSession());
+
+        $this->actingAs($this->admin())
+            ->post('/admin/pairing/cancel')
+            ->assertRedirect(route('admin.pairing'));
+
+        $this->assertNull(app(PairingService::class)->activeSession());
+
+        $this->actingAs($this->admin())
+            ->getJson('/admin/pairing/status')
+            ->assertOk()
+            ->assertJsonPath('pending', null);
+
+        // A late tap after the cancellation has nothing to pair with.
+        $this->postJson('/api/v1/admin/cards/pair', ['credential_uid' => 'LATE-CANCEL-1'], [
+            'Authorization' => 'Bearer '.$this->readerToken(),
+        ])->assertStatus(409)->assertJson(['status' => 'error']);
+    }
+
+    #[Test]
+    public function a_teacher_cannot_cancel_an_armed_window(): void
+    {
+        $student = $this->studentWithoutCard();
+
+        $this->actingAs($this->admin())
+            ->post('/admin/pairing/arm', ['student_id' => $student->id])
+            ->assertRedirect();
+
+        $this->actingAsFresh($this->teacher())
+            ->post('/admin/pairing/cancel')
+            ->assertForbidden();
+
+        $this->assertNotNull(app(PairingService::class)->activeSession());
     }
 
     #[Test]

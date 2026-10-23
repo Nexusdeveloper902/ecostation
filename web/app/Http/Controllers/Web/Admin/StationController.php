@@ -7,6 +7,8 @@ use App\Models\Reader;
 use App\Services\DeviceAuth\DeviceRequestSigner;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -20,19 +22,38 @@ class StationController extends Controller
 {
     public function index(): View
     {
+        $todayCounts = DB::table('events')
+            ->where('occurred_at', '>=', Carbon::today())
+            ->groupBy('reader_id')
+            ->selectRaw('reader_id, count(*) as items')
+            ->pluck('items', 'reader_id');
+
         $stations = Reader::query()
+            ->withCount('events')
             ->withMax('events', 'occurred_at')
             ->orderBy('label')
             ->get()
-            ->map(fn (Reader $reader) => [
-                'id' => (int) $reader->id,
-                'label' => (string) $reader->label,
-                'fingerprint' => DeviceRequestSigner::fingerprint((string) $reader->api_key),
-                'last_event_at' => $reader->events_max_occurred_at,
-            ])
+            ->map(function (Reader $reader) use ($todayCounts): array {
+                $lastAt = $reader->events_max_occurred_at !== null
+                    ? Carbon::parse($reader->events_max_occurred_at)
+                    : null;
+
+                return [
+                    'id' => (int) $reader->id,
+                    'label' => (string) $reader->label,
+                    'fingerprint' => DeviceRequestSigner::fingerprint((string) $reader->api_key),
+                    'last_event_at' => $reader->events_max_occurred_at,
+                    'today' => (int) ($todayCounts[$reader->id] ?? 0),
+                    'online' => $lastAt !== null && $lastAt->gte(now()->subMinutes(15)),
+                    'has_history' => (int) $reader->events_count > 0,
+                ];
+            })
             ->all();
 
-        return view('admin.stations', ['stations' => $stations]);
+        return view('admin.stations', [
+            'stations' => $stations,
+            'todayTotal' => array_sum(array_column($stations, 'today')),
+        ]);
     }
 
     public function store(Request $request): RedirectResponse

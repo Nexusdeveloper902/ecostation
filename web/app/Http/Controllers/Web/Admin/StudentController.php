@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers\Web\Admin;
 
+use App\Enums\CardStatus;
 use App\Http\Controllers\Controller;
+use App\Models\PendingPairing;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Services\StudentAccountService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,16 +29,57 @@ class StudentController extends Controller
         private readonly StudentAccountService $accounts,
     ) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
+        $search = trim((string) $request->query('q', ''));
+        $classId = (int) $request->query('class_id', 0);
+        $credential = (string) $request->query('credential', 'all');
+
+        if (! in_array($credential, ['all', 'card', 'phone', 'linked', 'unlinked'], true)) {
+            $credential = 'all';
+        }
+
+        $students = Student::query()
+            ->with([
+                'schoolClass',
+                'account',
+                'cards' => fn ($query) => $query->where('status', CardStatus::Active->value),
+            ])
+            ->withCount('cards')
+            ->withSum('pointsLedger as balance', 'delta')
+            ->when($search !== '', fn (Builder $query) => $query->where(
+                fn (Builder $inner) => $inner
+                    ->where('name', 'like', '%'.$search.'%')
+                    ->orWhereHas('account', fn (Builder $account) => $account->where('email', 'like', '%'.$search.'%'))
+            ))
+            ->when($classId > 0, fn (Builder $query) => $query->where('class_id', $classId))
+            ->when($credential !== 'all', function (Builder $query) use ($credential): void {
+                $active = fn (Builder $cards) => $cards->where('status', CardStatus::Active->value);
+
+                match ($credential) {
+                    'card' => $query->whereHas('cards', fn (Builder $cards) => $active($cards)
+                        ->where('kind', 'physical')),
+                    'phone' => $query->whereHas('cards', fn (Builder $cards) => $active($cards)
+                        ->where('kind', 'hce')),
+                    'linked' => $query->whereHas('cards', $active),
+                    'unlinked' => $query->whereDoesntHave('cards', $active),
+                    default => null,
+                };
+            })
+            ->orderBy('name')
+            ->paginate(25)
+            ->withQueryString();
+
         return view('admin.students', [
-            'students' => Student::query()
-                ->with(['schoolClass', 'account'])
-                ->withCount('cards')
-                ->withSum('pointsLedger as balance', 'delta')
-                ->orderBy('name')
-                ->paginate(25),
-            'classes' => SchoolClass::orderBy('name')->get(),
+            'students' => $students,
+            'classes' => SchoolClass::withCount('students')->orderBy('name')->get(),
+            'totalStudents' => Student::count(),
+            'totalClasses' => SchoolClass::count(),
+            'pendingStudentIds' => PendingPairing::active()->pluck('student_id')->map(fn ($id) => (int) $id)->all(),
+            'search' => $search,
+            'credentialFilter' => $credential,
+            'selectedClassId' => $classId,
+            'studentEmailDomain' => settings()->studentEmailDomain(),
         ]);
     }
 

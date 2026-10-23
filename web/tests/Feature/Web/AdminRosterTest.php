@@ -167,6 +167,69 @@ CSV;
     }
 
     #[Test]
+    public function the_roster_filters_by_search_class_and_credential_state(): void
+    {
+        $classA = $this->classId('5° A');
+        $classB = $this->classId('5° B');
+
+        $withoutCard = Student::create(['name' => 'Sin Credencial', 'class_id' => $classA]);
+        $hceStudent = Student::create(['name' => 'Solo Teléfono', 'class_id' => $classA]);
+        Card::create([
+            'credential_uid' => 'HCE-FILTER-0001',
+            'kind' => 'hce',
+            'student_id' => $hceStudent->id,
+        ]);
+
+        $index = fn (string $query) => $this->actingAs($this->admin())
+            ->get('/admin/students?'.$query)
+            ->assertOk();
+
+        // Search matches the student name AND the account email.
+        $index('q=Maria')
+            ->assertViewHas('students', fn ($students) => $students->total() === 1
+                && $students->first()->name === 'Maria González');
+        $index('q=carlos@')
+            ->assertViewHas('students', fn ($students) => $students->total() === 1
+                && $students->first()->name === 'Carlos Pérez');
+
+        // Class tab.
+        $index('class_id='.$classB)
+            ->assertViewHas('students', fn ($students) => $students->total() === 2);
+
+        // Credential filter maps to ACTIVE cards of each kind.
+        $index('credential=card')
+            ->assertViewHas('students', fn ($students) => $students->getCollection()->pluck('name')->contains('Maria González')
+                && ! $students->getCollection()->pluck('name')->contains('Solo Teléfono'));
+        $index('credential=phone')
+            ->assertViewHas('students', fn ($students) => $students->getCollection()->pluck('name')->contains('Solo Teléfono')
+                && ! $students->getCollection()->pluck('name')->contains('Maria González'));
+        $index('credential=linked')
+            ->assertViewHas('students', fn ($students) => ! $students->getCollection()->pluck('name')->contains('Sin Credencial'));
+        $index('credential=unlinked')
+            ->assertViewHas('students', fn ($students) => $students->getCollection()->pluck('name')->contains('Sin Credencial')
+                && ! $students->getCollection()->pluck('name')->contains('Maria González'));
+    }
+
+    #[Test]
+    public function the_roster_shows_the_pending_pairing_state_and_keeps_page_filters(): void
+    {
+        $student = Student::create([
+            'name' => 'Pendiente de Toque',
+            'class_id' => $this->classId('5° A'),
+        ]);
+
+        $this->actingAs($this->admin())
+            ->post('/admin/pairing/arm', ['student_id' => $student->id])
+            ->assertRedirect();
+
+        $this->actingAs($this->admin())
+            ->get('/admin/students?q=Pendiente')
+            ->assertOk()
+            ->assertSee('Pendiente: tocar estación')
+            ->assertViewHas('students', fn ($students) => $students->first()->name === 'Pendiente de Toque');
+    }
+
+    #[Test]
     public function deleting_a_student_cascades_its_cards_events_and_ledger(): void
     {
         $maria = $this->cardOf('Maria González');
@@ -217,6 +280,7 @@ CSV;
             ['delete', "/admin/stations/{$readerId}"],
             ['get', '/admin/pairing'],
             ['post', '/admin/pairing/arm'],
+            ['post', '/admin/pairing/cancel'],
             ['get', '/admin/pairing/status'],
             ['post', "/admin/cards/{$cardId}/revoke"],
             ['delete', "/admin/cards/{$cardId}"],

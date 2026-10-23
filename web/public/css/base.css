@@ -183,6 +183,10 @@ hr {
     outline: none;
 }
 
+[hidden] {
+    display: none !important;
+}
+
 /* Type helpers */
 .display {
     font-family: var(--eco-font-display);

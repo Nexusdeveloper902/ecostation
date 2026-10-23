@@ -118,6 +118,7 @@ Route::middleware('auth')->group(function () {
         // Pairing desk.
         Route::get('/pairing', [AdminPairingController::class, 'index'])->name('pairing');
         Route::post('/pairing/arm', [AdminPairingController::class, 'arm'])->name('pairing.arm');
+        Route::post('/pairing/cancel', [AdminPairingController::class, 'cancel'])->name('pairing.cancel');
         Route::get('/pairing/status', [AdminPairingController::class, 'status'])->name('pairing.status');
 
         // Credentials.

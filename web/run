@@ -28,6 +28,7 @@ serve() {
     local mdns=0
     local bind_host="127.0.0.1"
     local realtime_port
+    local allowed_origins="${REALTIME_ALLOWED_ORIGINS:-http://127.0.0.1:8000,http://localhost:8000}"
 
     case "$(printf '%s' "${ECOSTATION_LAN:-0}" | tr '[:upper:]' '[:lower:]')" in
         1|true|yes|on) lan=1 ;;
@@ -41,6 +42,13 @@ serve() {
     # feed or reader API to the whole LAN just because `./run serve` ran.
     if [ "$lan" = "1" ]; then
         bind_host="0.0.0.0"
+        # The browser's Origin carries the LAN address it used, not
+        # 127.0.0.1; allow that same host:port or the WS handshake 403s.
+        local lan_ip
+        lan_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+        if [ -n "$lan_ip" ]; then
+            allowed_origins="$allowed_origins,http://$lan_ip:8000"
+        fi
     fi
 
     # mDNS only makes sense for a LAN-bound service; an explicit value wins.
@@ -83,7 +91,7 @@ serve() {
     APP_DEBUG="$debug" php artisan serve --host="$bind_host" --port=8000 &
     pids+=("$!")
 
-    APP_DEBUG="$debug" php artisan realtime:serve --host="$bind_host" --port="$realtime_port" &
+    APP_DEBUG="$debug" REALTIME_ALLOWED_ORIGINS="$allowed_origins" php artisan realtime:serve --host="$bind_host" --port="$realtime_port" &
     pids+=("$!")
 
     APP_DEBUG="$debug" php artisan schedule:work &

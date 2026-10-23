@@ -49,4 +49,20 @@ class PairingController extends Controller
     {
         return response()->json(['status' => 'ok'] + $this->pairings->statusPayload());
     }
+
+    /**
+     * Close the armed window from the desk. The browser form gets a
+     * redirect + flash; the realtime script (Accept: application/json)
+     * gets the fresh status payload so it can swap the card in place.
+     */
+    public function cancel(Request $request): RedirectResponse|JsonResponse
+    {
+        $this->pairings->cancel();
+
+        if ($request->expectsJson()) {
+            return response()->json(['status' => 'ok'] + $this->pairings->statusPayload());
+        }
+
+        return redirect()->route('admin.pairing')->with('status', 'Ventana de vinculación cancelada.');
+    }
 }

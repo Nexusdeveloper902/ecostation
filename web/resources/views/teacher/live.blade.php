@@ -48,10 +48,6 @@
                         Se actualiza solo. La clasificación tarda unos segundos; el estudiante no espera en la estación.
                     </p>
                 </div>
-                <span class="chip chip--danger">
-                    <span class="live-dot live-dot--off" aria-hidden="true"></span>
-                    En vivo
-                </span>
             </div>
 
             <div class="card__body card__body--flush" data-live-rows>
@@ -209,3 +205,7 @@
         </aside>
     </div>
 @endsection
+
+@push('scripts')
+    <script src="{{ asset('js/realtime.js') }}" defer></script>
+@endpush
