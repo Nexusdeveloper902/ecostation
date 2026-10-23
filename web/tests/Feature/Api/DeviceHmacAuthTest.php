@@ -331,6 +331,23 @@ class DeviceHmacAuthTest extends TestCase
     #[Test]
     public function a_signed_device_captures_bottle_first_with_the_multipart_canonical(): void
     {
-        $this->markTestSkipped('Task 9/10');
+        Storage::fake('local');
+        $reader = $this->reader();
+        $file = UploadedFile::fake()->image('bottle.jpg');
+        $hash = hash_file('sha256', $file->getPathname());
+        $canonical = DeviceRequestSigner::multipartCanonical(null, $hash);
+        $nonce = Str::random(32);
+
+        $this->call(
+            'POST',
+            '/api/v1/recycling/capture',
+            [],
+            [],
+            ['image' => $file],
+            [
+                'HTTP_ACCEPT' => 'application/json',
+                'HTTP_AUTHORIZATION' => DeviceRequestSigner::authorizationHeader($reader, 'POST', '/api/v1/recycling/capture', $canonical, $nonce),
+            ]
+        )->assertOk()->assertJson(['status' => 'ok', 'state' => 'awaiting_card']);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Contracts\MaterialClassifier;
 use App\Models\Card;
 use App\Models\HceCredentialKey;
 use App\Models\PresenceEvent;
@@ -10,8 +11,10 @@ use App\Models\Student;
 use App\Services\Hce\HceCredentialAuth;
 use App\Services\PairingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Support\FakeHcePhone;
@@ -346,7 +349,33 @@ class HceCredentialTest extends TestCase
     #[Test]
     public function capture_association_also_requires_the_proof(): void
     {
-        $this->markTestSkipped('Task 10');
+        [$phone] = $this->enrolledPhone('PLS-EVERYDOOR001');
+
+        // Bottle-first recycling association.
+        Storage::fake('local');
+        $this->swap(MaterialClassifier::class, new class implements MaterialClassifier
+        {
+            public function classify(string $imagePath): array
+            {
+                return ['material_class' => 'plastic', 'confidence' => 0.9, 'is_bottle' => true, 'is_recyclable' => true];
+            }
+        });
+
+        $reader = $this->reader();
+        $captureId = $this->post('/api/v1/recycling/capture', [
+            'image' => UploadedFile::fake()->image('bottle.jpg'),
+        ], $this->headers($reader))->json('capture_id');
+
+        $this->postJson("/api/v1/recycling/captures/{$captureId}/associate", [
+            'credential_uid' => $phone->credentialUid,
+        ], $this->headers($reader))
+            ->assertStatus(403)
+            ->assertJson(['reason' => 'hce_auth_failed']);
+
+        // The window stayed open: the proven retry resolves it.
+        $this->postJson("/api/v1/recycling/captures/{$captureId}/associate", $phone->tap(), $this->headers($reader))
+            ->assertOk()
+            ->assertJson(['capture_state' => 'accepted']);
     }
 
     // ---------------------------------------------------------------
