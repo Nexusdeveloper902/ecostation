@@ -6,9 +6,11 @@ use App\Models\PresenceEvent;
 use App\Models\RecyclingDeposit;
 use App\Models\Student;
 use App\Models\User;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -40,6 +42,40 @@ class DepositPhotoTest extends TestCase
         $this->assertStringContainsString('image/', (string) $response->headers->get('Content-Type'));
         $this->assertStringContainsString('private', (string) $response->headers->get('Cache-Control'));
         $this->assertNotSame('', $response->streamedContent());
+    }
+
+    #[Test]
+    public function the_response_is_nosniff_and_never_cached_with_a_safe_filename(): void
+    {
+        $deposit = $this->depositWithPhotoFor('Maria González');
+
+        $response = $this->actingAs($this->admin())
+            ->get("/deposits/{$deposit->id}/photo");
+
+        $response->assertOk();
+        $this->assertSame('nosniff', $response->headers->get('X-Content-Type-Options'));
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+        $this->assertStringContainsString(
+            'deposito-'.$deposit->id.'.jpg',
+            (string) $response->headers->get('Content-Disposition'),
+        );
+    }
+
+    #[Test]
+    public function a_file_that_vanishes_between_authorization_and_read_is_404_not_500(): void
+    {
+        $deposit = $this->depositWithPhotoFor('Maria González');
+        $path = (string) $deposit->image_path;
+
+        // The metadata check (if any) could pass, but the stream itself is
+        // gone: opening the stream FIRST is what turns this into a 404.
+        $disk = Mockery::mock(Filesystem::class);
+        $disk->shouldReceive('readStream')->with($path)->andReturn(false);
+        Storage::shouldReceive('disk')->with('local')->andReturn($disk);
+
+        $this->actingAs($this->admin())
+            ->get("/deposits/{$deposit->id}/photo")
+            ->assertNotFound();
     }
 
     #[Test]

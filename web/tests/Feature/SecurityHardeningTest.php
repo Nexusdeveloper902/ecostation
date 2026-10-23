@@ -63,6 +63,14 @@ class SecurityHardeningTest extends TestCase
     }
 
     #[Test]
+    public function the_private_local_disk_cannot_serve_signed_urls(): void
+    {
+        // Only DepositPhotoController may open a deposit photo; Laravel's
+        // framework-signed /storage route would bypass StudentScope.
+        $this->assertFalse((bool) config('filesystems.disks.local.serve'));
+    }
+
+    #[Test]
     public function ensure_role_denies_guests_with_401(): void
     {
         $middleware = new EnsureRole;

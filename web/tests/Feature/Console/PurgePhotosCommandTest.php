@@ -10,9 +10,11 @@ use App\Models\RecyclingDeposit;
 use App\Models\Student;
 use App\Services\PointsService;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -64,23 +66,67 @@ class PurgePhotosCommandTest extends TestCase
     }
 
     #[Test]
-    public function terminal_pending_captures_lose_their_file_and_row_while_young_ones_are_kept(): void
+    public function terminal_and_stale_open_pending_captures_lose_their_file_and_row_while_young_ones_are_kept(): void
     {
         settings()->setMany(['photos.retention_days' => 30]);
 
         $oldTerminal = $this->pendingCapture(PendingCaptureState::Expired, now()->subDays(31));
         $youngTerminal = $this->pendingCapture(PendingCaptureState::Rejected, now()->subDays(29));
         $oldOpen = $this->pendingCapture(PendingCaptureState::AwaitingCard, now()->subDays(31));
+        $oldValidating = $this->pendingCapture(PendingCaptureState::Validating, now()->subDays(31));
 
-        $this->artisan('photos:purge')->expectsOutputToContain('Fotos eliminadas: 1')->assertSuccessful();
+        $this->artisan('photos:purge')->expectsOutputToContain('Fotos eliminadas: 3')->assertSuccessful();
 
         Storage::disk('local')->assertMissing($oldTerminal->image_path);
         Storage::disk('local')->assertExists($youngTerminal->image_path);
-        Storage::disk('local')->assertExists($oldOpen->image_path);
+        Storage::disk('local')->assertMissing($oldOpen->image_path);
+        Storage::disk('local')->assertMissing($oldValidating->image_path);
 
         $this->assertModelMissing($oldTerminal);
         $this->assertModelExists($youngTerminal);
-        $this->assertModelExists($oldOpen);
+        $this->assertModelMissing($oldOpen);
+        $this->assertModelMissing($oldValidating);
+    }
+
+    #[Test]
+    public function a_failed_file_delete_keeps_the_pointer_and_a_rerun_retries(): void
+    {
+        settings()->setMany(['photos.retention_days' => 30]);
+        $old = $this->depositWithPhotoFor('Maria González', occurredAt: now()->subDays(31));
+        $path = (string) $old->image_path;
+
+        // The disk reports the file but refuses the delete.
+        $disk = Mockery::mock(Filesystem::class);
+        $disk->shouldReceive('exists')->with($path)->andReturn(true);
+        $disk->shouldReceive('delete')->with($path)->andReturn(false);
+        $disk->shouldReceive('allFiles')->with('recycling-captures')->andReturn([]);
+        Storage::shouldReceive('disk')->with('local')->andReturn($disk);
+
+        $this->artisan('photos:purge')
+            ->expectsOutputToContain('Fotos no eliminadas: 1')
+            ->assertExitCode(1);
+
+        // Pointer intact so tomorrow's run (or a fixed disk) retries.
+        $this->assertSame($path, $old->refresh()->image_path);
+    }
+
+    #[Test]
+    public function an_unreferenced_file_older_than_the_cutoff_is_removed_but_young_orphans_remain(): void
+    {
+        settings()->setMany(['photos.retention_days' => 30]);
+
+        $disk = Storage::disk('local');
+        $oldOrphan = 'recycling-captures/orphan-viejo.jpg';
+        $youngOrphan = 'recycling-captures/orphan-joven.jpg';
+        $disk->put($oldOrphan, 'x');
+        $disk->put($youngOrphan, 'x');
+        touch($disk->path($oldOrphan), now()->subDays(31)->timestamp);
+        touch($disk->path($youngOrphan), now()->subDays(2)->timestamp);
+
+        $this->artisan('photos:purge')->expectsOutputToContain('Fotos eliminadas: 1')->assertSuccessful();
+
+        $disk->assertMissing($oldOrphan);
+        $disk->assertExists($youngOrphan);
     }
 
     #[Test]

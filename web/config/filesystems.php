@@ -33,7 +33,9 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // The private disk must never serve framework-signed URLs:
+            // only DepositPhotoController (StudentScope) may open a photo.
+            'serve' => false,
             'throw' => false,
             'report' => false,
         ],
