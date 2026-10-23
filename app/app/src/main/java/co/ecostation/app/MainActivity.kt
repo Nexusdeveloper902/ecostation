@@ -147,6 +147,11 @@ class MainActivity : Activity() {
                 handler.postDelayed(refresh, VERIFIED_HOLD_MS)
             } else if (event.startsWith(ENROLL_EVENT)) {
                 keyPresent = true
+            } else if (event.startsWith(ENROLL_ERROR_EVENT)) {
+                // The reader got 6985: nothing was adopted, so do not keep
+                // promising "llave enviada".
+                settings.linkPending = false
+                refreshKeyPresence()
             }
             postRender()
         }
@@ -833,6 +838,7 @@ class MainActivity : Activity() {
         private const val VERIFIED_HOLD_MS = 3_000L
         private const val AUTH_EVENT = "RETO -> 9000"
         private const val ENROLL_EVENT = "ENROLAR -> 9000"
+        private const val ENROLL_ERROR_EVENT = "ENROLAR -> error"
         private const val SELECT_EVENT = "SELECCIONAR AID"
         private const val ENROLLMENT_TTL_MS = 60_000f
         private const val SIGNAL_LIMIT = 3
