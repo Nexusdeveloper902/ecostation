@@ -32,23 +32,33 @@ class LeaderboardService
     /**
      * A student's own standing (rank + points), competition-ranked.
      *
+     * No carga el tablero completo: dos consultas acotadas al índice de
+     * `points_ledger` — la suma propia y cuántos estudiantes tienen una
+     * suma estrictamente mayor (los empates comparten el mejor puesto).
+     *
      * @return array{rank: int|null, points: int}
      */
     public function rankOf(Student $student): array
     {
-        $points = null;
-        $rank = null;
+        $totals = DB::query()->fromSub(
+            DB::table('students')
+                ->leftJoin('points_ledger', 'points_ledger.student_id', '=', 'students.id')
+                ->groupBy('students.id')
+                ->select([
+                    'students.id as student_id',
+                    DB::raw('COALESCE(SUM(points_ledger.delta), 0) as points'),
+                ]),
+            'scored',
+        );
 
-        foreach ($this->stampRanks($this->scored()->get()) as $entry) {
-            if ($entry['student_id'] === (int) $student->id) {
-                $rank = $entry['rank'];
-                $points = $entry['points'];
+        $own = (clone $totals)->where('student_id', (int) $student->id)->value('points');
+        $points = $own !== null ? (int) $own : 0;
 
-                break;
-            }
-        }
+        // Competición (1, 2, 2, 4): el puesto es uno más que el número
+        // de estudiantes con MÁS puntos; los empates no lo incrementan.
+        $better = (clone $totals)->where('points', '>', $points)->count();
 
-        return ['rank' => $rank, 'points' => $points ?? 0];
+        return ['rank' => $better + 1, 'points' => $points];
     }
 
     /**

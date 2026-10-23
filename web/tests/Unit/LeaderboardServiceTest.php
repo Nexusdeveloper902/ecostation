@@ -6,6 +6,7 @@ use App\Models\PointsLedger;
 use App\Models\Student;
 use App\Services\Recycling\LeaderboardService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -70,6 +71,48 @@ class LeaderboardServiceTest extends TestCase
 
         $this->assertSame(2, $standing['rank']);
         $this->assertSame(10, $standing['points']);
+    }
+
+    #[Test]
+    public function rank_of_shares_the_board_rank_under_ties(): void
+    {
+        $maria = Student::where('name', 'Maria González')->firstOrFail();
+        $ana = Student::where('name', 'Ana Martínez')->firstOrFail();
+
+        $this->award($this->studentIdOf('Carlos Pérez'), 25);
+        $this->award($maria->id, 10);
+        $this->award($ana->id, 10);
+        $this->award($this->studentIdOf('Diego López'), 10);
+
+        // Three students tie at 10: they share 2nd place, and the
+        // zero-point student below them lands on 5th.
+        $this->assertSame(['rank' => 2, 'points' => 10], $this->service->rankOf($maria));
+        $this->assertSame(['rank' => 2, 'points' => 10], $this->service->rankOf($ana));
+
+        $lucia = Student::where('name', 'Lucía Fernández')->firstOrFail();
+        $this->assertSame(['rank' => 5, 'points' => 0], $this->service->rankOf($lucia));
+
+        // The bounded query agrees entry-by-entry with the full board.
+        foreach ($this->service->top(100) as $entry) {
+            $student = Student::findOrFail($entry['student_id']);
+            $this->assertSame($entry['rank'], $this->service->rankOf($student)['rank']);
+        }
+    }
+
+    #[Test]
+    public function rank_of_does_not_load_the_whole_board(): void
+    {
+        $maria = Student::where('name', 'Maria González')->firstOrFail();
+        $this->award($maria->id, 10);
+
+        $queries = 0;
+        DB::listen(function () use (&$queries): void {
+            $queries++;
+        });
+
+        $this->service->rankOf($maria);
+
+        $this->assertLessThanOrEqual(2, $queries, 'rankOf debe usar consultas acotadas, no el tablero completo');
     }
 
     #[Test]

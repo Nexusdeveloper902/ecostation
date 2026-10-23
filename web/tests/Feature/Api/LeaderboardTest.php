@@ -72,6 +72,29 @@ class LeaderboardTest extends TestCase
     }
 
     #[Test]
+    public function me_rank_matches_the_balance_rank_under_ties(): void
+    {
+        $maria = $this->studentIdOf('Maria González');
+        $this->award($maria, 10);
+        $this->award($this->studentIdOf('Ana Martínez'), 10);
+        $this->award($this->studentIdOf('Carlos Pérez'), 25);
+
+        $user = $this->studentUser('maria');
+
+        $boardRank = $this->actingAsFresh($user)
+            ->getJson('/api/v1/recycling/leaderboard')
+            ->assertOk()
+            ->json('me.rank');
+        $balanceRank = $this->actingAsFresh($user)
+            ->getJson('/api/v1/me/balance')
+            ->assertOk()
+            ->json('rank');
+
+        $this->assertSame(2, $boardRank);
+        $this->assertSame($boardRank, $balanceRank, 'ambos endpoints usan el mismo rank competitivo');
+    }
+
+    #[Test]
     public function non_student_roles_get_no_me_block(): void
     {
         $response = $this->actingAs($this->teacher())->getJson('/api/v1/recycling/leaderboard');
