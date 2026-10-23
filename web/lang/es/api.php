@@ -16,4 +16,8 @@ return [
     'card_not_recognized' => 'Tarjeta no reconocida',
     'card_not_active' => 'La tarjeta no está activa',
     'hce_credential_unverified' => 'No se pudo verificar la credencial del teléfono',
+
+    // Endpoint de emparejamiento de tarjetas
+    'pairing_no_active_session' => 'No hay ninguna sesión de emparejamiento activa',
+    'pairing_card_already_paired' => 'La tarjeta ya está emparejada',
 ];
