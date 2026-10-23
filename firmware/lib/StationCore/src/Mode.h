@@ -23,11 +23,11 @@ public:
 
     virtual ModeKind kind() const = 0;
 
-    /** Short bilingual-safe label for the serial log. */
+    /** Short Spanish label for the serial log. */
     virtual const char* label() const = 0;
 
     /**
-     * Bilingual operator guidance printed right after a mode switch.
+     * Spanish operator guidance printed right after a mode switch.
      * The Serial Monitor is the device's only screen — the hint is how
      * the device teaches its own flow (TASK-004; e.g. pairing needs an
      * admin-armed session BEFORE any tap). May contain '\n' + spaces for

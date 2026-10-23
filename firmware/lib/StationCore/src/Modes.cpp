@@ -4,18 +4,14 @@
 
 namespace EcoStation {
 
-// TASK-004: the hints below are the device teaching its own flow. The
-// "45 s" in the pairing hint mirrors the B2B-Core default
-// (presence.pairing_window_seconds, ADR-020); it is display-only
-// guidance — the authoritative window is always the backend's.
-// / Las pistas enseñan el flujo del dispositivo. El "45 s" refleja el
-// valor por defecto del backend; es solo guía visual.
+// TASK-004: the hints below are the device teaching its own flow. They name
+// no pairing-window length: the window is configured on the server.
 const char* OperationMode::hint() const {
     return "acerca una tarjeta o teléfono EMPAREJADO y deja la botella";
 }
 
 const char* PairingMode::hint() const {
-    return "arma primero una sesión en la web (admin, ventana de 45 s),\n"
+    return "arma primero una sesión en la web (admin),\n"
            "     luego acerca una tarjeta NUEVA o el teléfono con «Vincular este teléfono» abierto";
 }
 

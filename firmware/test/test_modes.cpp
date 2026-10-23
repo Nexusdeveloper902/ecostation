@@ -175,7 +175,6 @@ void test_pairing_hint_teaches_arm_first_flow(void) {
     const char* hint = pair.hint();
 
     TEST_ASSERT_NOT_NULL(strstr(hint, "arma primero una sesión"));
-    TEST_ASSERT_NOT_NULL(strstr(hint, "45 s"));
 }
 
 void test_mode_hints_distinct_nonempty(void) {
