@@ -79,7 +79,16 @@ class BackendDiscovery(context: Context) {
 
         // Resolve one at a time (pre-Android 14 NSD refuses concurrent resolves).
         val candidates = services.distinctBy { it.serviceName }.take(MAX_CONSIDERED).mapNotNull { resolve(it, log) }
-        return EcoEndpoint.pick(candidates)?.also { log("mDNS: resolved $it") }
+        val picked = EcoEndpoint.pick(candidates) ?: return null
+        // protocol=1 is only a TXT advertisement: anyone on the LAN can publish
+        // it. Confirm the winner with the same manifest check as the probe
+        // before the station password is ever sent.
+        if (!looksLikeEcoStation(picked)) {
+            log("mDNS: $picked no parece EcoStation (manifest sin nombre/start_url) — usando sondeo de subred")
+            return null
+        }
+        log("mDNS: resolved $picked")
+        return picked
     }
 
     @Suppress("DEPRECATION") // resolveService/host: still the only API below 34
@@ -171,17 +180,23 @@ class BackendDiscovery(context: Context) {
      */
     private fun looksLikeEcoStation(endpoint: EcoEndpoint): Boolean {
         if (!EcoEndpoint.isLanHost(endpoint.host)) return false
+        var conn: HttpURLConnection? = null
         return try {
-            val conn = URL(endpoint.baseUrl + "/manifest.webmanifest").openConnection() as HttpURLConnection
-            conn.connectTimeout = 1_500
-            conn.readTimeout = 1_500
-            conn.instanceFollowRedirects = false
-            val ok = conn.responseCode == 200 &&
-                EcoEndpoint.isEcoStationManifest(BoundedRead.read(conn.inputStream, BoundedRead.SMALL_MAX))
-            conn.disconnect()
-            ok
+            val c = URL(endpoint.baseUrl + "/manifest.webmanifest").openConnection() as HttpURLConnection
+            conn = c
+            c.connectTimeout = 1_500
+            c.readTimeout = 1_500
+            c.instanceFollowRedirects = false
+            val body = if (c.responseCode == 200) {
+                BoundedRead.read(c.inputStream, BoundedRead.SMALL_MAX)
+            } else {
+                null
+            }
+            EcoEndpoint.confirmsEcoStation(endpoint, body)
         } catch (e: Exception) {
             false
+        } finally {
+            conn?.disconnect()
         }
     }
 

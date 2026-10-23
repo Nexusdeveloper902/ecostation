@@ -178,19 +178,24 @@ class SettingsActivity : Activity() {
                 val endpoint = EcoEndpoint.locate(typed) { discovery.discover { } }
                 if (endpoint != null) {
                     val started = SystemClock.elapsedRealtime()
-                    val conn = URL(endpoint.baseUrl + "/manifest.webmanifest")
-                        .openConnection() as HttpURLConnection
-                    conn.connectTimeout = 2_500
-                    conn.readTimeout = 2_500
-                    conn.instanceFollowRedirects = false
-                    val code = conn.responseCode
-                    val body = BoundedRead.read(
-                        if (code == 200) conn.inputStream else conn.errorStream,
-                        BoundedRead.SMALL_MAX,
-                    )
-                    conn.disconnect()
-                    if (code == 200 && EcoEndpoint.isEcoStationManifest(body)) {
-                        latency = SystemClock.elapsedRealtime() - started
+                    var conn: HttpURLConnection? = null
+                    try {
+                        val c = URL(endpoint.baseUrl + "/manifest.webmanifest")
+                            .openConnection() as HttpURLConnection
+                        conn = c
+                        c.connectTimeout = 2_500
+                        c.readTimeout = 2_500
+                        c.instanceFollowRedirects = false
+                        val code = c.responseCode
+                        val body = BoundedRead.read(
+                            if (code == 200) c.inputStream else c.errorStream,
+                            BoundedRead.SMALL_MAX,
+                        )
+                        if (code == 200 && EcoEndpoint.isEcoStationManifest(body)) {
+                            latency = SystemClock.elapsedRealtime() - started
+                        }
+                    } finally {
+                        conn?.disconnect()
                     }
                 }
             } catch (_: Exception) {

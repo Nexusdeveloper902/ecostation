@@ -82,6 +82,17 @@ data class EcoEndpoint(val host: String, val port: Int) {
             body.contains("\"start_url\"") && MANIFEST_NAME.containsMatchIn(body)
 
         /**
+         * The accept/reject decision for a discovered endpoint: the host must
+         * be LAN-only and its `/manifest.webmanifest` must carry both the
+         * product name and `start_url`. Used for the mDNS winner too — a TXT
+         * `protocol=1` answer alone must not receive the station password.
+         */
+        fun confirmsEcoStation(endpoint: EcoEndpoint, manifestBody: String?): Boolean =
+            isLanHost(endpoint.host) &&
+                manifestBody != null &&
+                isEcoStationManifest(manifestBody)
+
+        /**
          * Typed address: `host`, `host:port` or `http://host[:port]/`. Port
          * defaults to [DEFAULT_API_PORT]. Only LAN HTTP is accepted; loopback
          * and `0.0.0.0` are refused (they are the phone itself or a wildcard).
@@ -96,7 +107,7 @@ data class EcoEndpoint(val host: String, val port: Int) {
             }
             val body = withoutScheme.trimEnd('/')
             if (body.isEmpty() || '/' in body || body.count { it == ':' } > 1) return null
-            val host = body.substringBefore(':')
+            val host = body.substringBefore(':').trim()
             val port = if (':' in body) {
                 body.substringAfter(':').toIntOrNull() ?: return null
             } else {

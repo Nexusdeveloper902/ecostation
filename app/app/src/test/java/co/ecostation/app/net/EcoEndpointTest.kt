@@ -55,6 +55,8 @@ class EcoEndpointTest {
     @Test fun parseManual_accepts_lan_hosts_ports_and_urls_and_refuses_garbage() {
         assertEquals(EcoEndpoint("192.168.1.10", 8000), EcoEndpoint.parseManual("192.168.1.10"))
         assertEquals(EcoEndpoint("192.168.1.10", 8080), EcoEndpoint.parseManual(" 192.168.1.10:8080 "))
+        // The returned host is the one that was validated, without padding.
+        assertEquals(EcoEndpoint("192.168.1.10", 8000), EcoEndpoint.parseManual("192.168.1.10 :8000"))
         assertEquals(EcoEndpoint("servidor.local", 8000), EcoEndpoint.parseManual("http://servidor.local:8000/"))
         assertEquals(EcoEndpoint("estacion.lan", 8000), EcoEndpoint.parseManual("estacion.lan"))
         assertEquals(EcoEndpoint("169.254.10.20", 8000), EcoEndpoint.parseManual("169.254.10.20"))
@@ -105,6 +107,26 @@ class EcoEndpointTest {
         assertFalse(EcoEndpoint.isEcoStationManifest("""{"start_url":"/"}"""))
         assertFalse(EcoEndpoint.isEcoStationManifest("""{"name":"OtraApp","start_url":"/"}"""))
         assertFalse(EcoEndpoint.isEcoStationManifest("""{"name":"EcoStation"}"""))
+    }
+
+    @Test fun discovery_accepts_only_a_lan_host_whose_manifest_names_ecostation() {
+        val endpoint = EcoEndpoint("192.168.43.10", 8000)
+        // Good manifest: both fields present.
+        assertTrue(EcoEndpoint.confirmsEcoStation(endpoint, """{"name":"EcoStation","start_url":"/"}"""))
+        // Missing name.
+        assertFalse(EcoEndpoint.confirmsEcoStation(endpoint, """{"start_url":"/"}"""))
+        // Missing start_url.
+        assertFalse(EcoEndpoint.confirmsEcoStation(endpoint, """{"name":"EcoStation"}"""))
+        // No body at all (HTTP error / unreadable manifest).
+        assertFalse(EcoEndpoint.confirmsEcoStation(endpoint, null))
+        assertFalse(EcoEndpoint.confirmsEcoStation(endpoint, ""))
+        // A public host is refused even with a perfect manifest.
+        assertFalse(
+            EcoEndpoint.confirmsEcoStation(
+                EcoEndpoint("8.8.8.8", 8000),
+                """{"name":"EcoStation","start_url":"/"}""",
+            ),
+        )
     }
 
     @Test fun cellular_and_vpn_interfaces_are_excluded_from_the_sweep() {
