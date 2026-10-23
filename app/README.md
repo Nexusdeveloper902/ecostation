@@ -14,6 +14,70 @@ cd app
 ./gradlew :app:assembleRelease      # requiere la llave de firma (ver abajo)
 ```
 
+## Interfaz
+
+La piel visual sigue `design/DESIGN-SPEC.md` y los tableros de
+`design/movil/`. La app no usa AndroidX ni Material Components: las tarjetas,
+pastillas, campos y la navegación inferior son `View` del framework con
+`drawable` propios, fuentes autoalojadas y un par de vistas de medida/dibujo.
+
+La barra inferior tiene cuatro destinos reales y la comparten las tres
+actividades (`layout/view_bottom_nav.xml` + `ui/BottomNav.kt`):
+
+| Pestaña | Destino |
+|---|---|
+| **Tarjeta** | `MainActivity`, sección `cardSection` |
+| **Parlante** | `MainActivity`, sección `speakerSection` |
+| **Mis puntos** | `StudentActivity` |
+| **Ajustes** | `SettingsActivity` |
+
+`Tarjeta` y `Parlante` se cambian dentro de `MainActivity` sin crear otra
+actividad. Al saltar a `Mis puntos` o `Ajustes` se abre la actividad destino y
+se termina la actual, así que la barra nunca deja un back-stack circular:
+Atrás sale de la app, no vuelve a una pestaña anterior.
+
+### Mapa de tableros
+
+| Tablero (`design/movil/`) | Pantalla / estado implementado |
+|---|---|
+| `tarjeta-sin-vincular.png` | `MainActivity` · Tarjeta · `SIN VINCULAR` (tarjeta verde, pastilla «Sin vincular», pasos y botón «Vincular este teléfono») |
+| `tarjeta-vinculando.png` | `MainActivity` · Tarjeta · `VINCULANDO 0:42` (cuenta atrás y arco en `TapTargetView`, botón Cancelar) |
+| `tarjeta-lista.png` | `MainActivity` · Tarjeta · `LISTA` / `VERIFICADA` / `LLAVE ENVIADA` (cara ID-1, anillos y último toque) |
+| `modo-parlante.png` | `MainActivity` · Parlante (interruptor, tres filas de estado, últimas señales, dirección y diagnóstico) |
+| `mis-puntos-iniciar-sesion.png` | `StudentActivity` · grupo `loginGroup` |
+| `mis-puntos.png` | `StudentActivity` · grupo `accountGroup` (hero de saldo, historial con chips y pastillas) |
+| `ajustes.png` | `SettingsActivity` |
+| `icono-de-app.png` | iconos de lanzador en `mipmap-*` + adaptativo en `mipmap-anydpi-v26` |
+
+Estados sin tablero propio: `NFC APAGADO` y `NO COMPATIBLE` (tarjeta y título
+en rojo de peligro, nunca verde de marca), `LLAVE ENVIADA`, `VERIFICADA` y el
+cambio obligatorio de contraseña. Se visten con los mismos tokens.
+
+Datos que los tableros muestran pero la lógica actual no entrega, y que por
+tanto NO se inventan: el nombre/curso del estudiante en la tarjeta (el
+`MainActivity` solo conoce el `CredentialId`), la estación del «último toque»,
+el material/estación/puntos de cada señal del parlante y el delta semanal
+`+85 esta semana` (la API solo devuelve saldo y puesto). El nombre/curso sí se
+muestran en **Mis puntos**, donde llegan en `balance.student`.
+
+### Tipografías, iconos y marca
+
+- Fuentes: `res/font/` (Fredoka 500/600, Nunito 400/700/800, JetBrains Mono
+  600). Para API 24–25 hay una copia en `assets/fonts/` y `EcoTypeface` carga
+  la misma TTF; en API 26+ usa el recurso. Licencias en
+  [`docs/FONTS.md`](docs/FONTS.md).
+- Iconos: vectores geométricos propios; no se reutilizó path data de Material
+  Icons. Ver [`docs/ICONS.md`](docs/ICONS.md).
+- Boti y el logotipo horizontal salen de `design/brand/logo/`; el icono de
+  lanzador se regenera con:
+
+  ```bash
+  python3 tools/gen_brand_assets.py
+  ```
+
+  El script lee `design/` por defecto (`ECOSTATION_DESIGN` permite otra ruta)
+  y escribe en `res/`, nunca en `build/`.
+
 ## Firma de release
 
 La llave de release vive fuera del repositorio. Genérala una sola vez:
@@ -47,26 +111,29 @@ y obliga a volver a emparejarlos.
 ## Modo parlante
 
 El teléfono puede además escuchar el feed en tiempo real de EcoStation y
-sonar en cada toque, como el altavoz de una estación. El modo se enciende en
-**Ajustes** y solo vive mientras `MainActivity` está visible: al salir se
-detiene el puente, se apaga el keep-alive de audio y se suelta la pantalla.
+sonar en cada toque, como el altavoz de una estación. El modo se enciende con
+el interruptor de la pestaña **Parlante** y solo vive mientras `MainActivity`
+está visible: al salir se detiene el puente, se apaga el keep-alive de audio y
+se suelta la pantalla.
 
-En **Ajustes** se configuran cuatro cosas:
+En **Ajustes** se configuran dos bloques:
 
-- **Dirección del servidor (opcional).** Si se deja vacía, la app busca el
-  servicio `_ecostation._tcp` en la red y, si no aparece, sondea las subredes
-  privadas de tamaño /22 o menor. Una dirección escrita a mano
+- **Servidor.** La dirección manual es opcional. Con «Buscar automáticamente»
+  encendido (o la dirección vacía), la app busca el servicio
+  `_ecostation._tcp` en la red y, si no aparece, sondea las subredes privadas
+  de tamaño /22 o menor. Una dirección escrita a mano
   (`192.168.1.10`, `192.168.1.10:8080` o `http://servidor.local:8000/`) gana
   siempre y se salta el descubrimiento. Un valor inválido se rechaza al
-  guardar con «Dirección no válida».
-- **Modo parlante.** El interruptor que arranca el puente.
-- **Correo de la cuenta del parlante.** La cuenta debe tener rol `station` en
-  la web y no puede tener cambio de contraseña pendiente; de lo contrario el
-  servidor no entrega el token del feed.
-- **Contraseña.** Se guarda sellada con una llave AES-GCM del Android
-  Keystore y nunca se vuelve a mostrar en claro: al reabrir Ajustes el campo
-  aparece vacío con la pista «Contraseña guardada» y solo se reemplaza si se
-  escribe una nueva.
+  guardar con «Dirección no válida». **Probar conexión** consulta
+  `/manifest.webmanifest` con timeouts cortos y muestra el punto de estado y la
+  latencia medida, sin bloquear la interfaz.
+- **Cuenta del parlante.** Correo y contraseña. La cuenta debe tener rol
+  `station` en la web y no puede tener cambio de contraseña pendiente; de lo
+  contrario el servidor no entrega el token del feed. La contraseña se guarda
+  sellada con una llave AES-GCM del Android Keystore y nunca se vuelve a
+  mostrar en claro: al reabrir Ajustes el campo aparece vacío con la pista
+  «Contraseña guardada» y solo se reemplaza si se escribe una nueva.
+  «Iniciar sesión del parlante» guarda y deja el modo encendido.
 
 Con el modo encendido, la pantalla queda encendida y las teclas de volumen
 mueven el flujo multimedia (no el del timbre). Los cinco sonidos son:
@@ -79,11 +146,12 @@ mueven el flujo multimedia (no el del timbre). Los cinco sonidos son:
 | `eco_cue_recycled` | una clasificación nueva dio puntos |
 | `eco_cue_not_recyclable` | una clasificación nueva no dio puntos |
 
-Los pitidos locales suenan siempre, aunque el modo parlante esté apagado. El
-diagnóstico muestra «Eventos del servidor (sonido)» con el estado del puente y
-el último sonido, y «Salida de audio» con el dispositivo que Android usa (A2DP
-o el altavoz del teléfono); **tocar esa línea reproduce los cinco sonidos**,
-que es la prueba rápida en el banco.
+Los pitidos locales suenan siempre, aunque el modo parlante esté apagado. En
+la pestaña **Parlante**, el bloque plegable «Diagnóstico técnico» muestra
+«Eventos del servidor (sonido)» con el estado del puente y el último sonido, y
+«Salida de audio» con el dispositivo que Android usa (A2DP o el altavoz del
+teléfono); **tocar esa línea reproduce los cinco sonidos**, que es la prueba
+rápida en el banco.
 
 Estados del puente: `buscando servidor…`, `servidor <host:puerto>: iniciando
 sesión…`, `EN VIVO · <host:puerto>` y `reintento en Ns: <motivo>`. Si falta la
@@ -104,7 +172,7 @@ ECO_E2E_READER_KEY=... ECO_E2E_CARD=... ./gradlew :app:testDebugUnitTest --tests
 
 ## Vista del estudiante
 
-El botón **Mis puntos** de la pantalla principal abre la vista del estudiante:
+La pestaña **Mis puntos** de la barra inferior abre la vista del estudiante:
 entrar con correo y contraseña, ver saldo, puesto e historial de depósitos, y
 cerrar sesión. El token de Sanctum se guarda sellado con la llave AES-GCM del
 Android Keystore y sobrevive a cerrar y reabrir la app; **ninguna contraseña se
@@ -116,8 +184,9 @@ guarda**.
 - Al relanzar con un token guardado, se piden saldo e historial; un `403`
   vuelve a mostrar el formulario de cambio y un `401` borra el token y regresa
   al inicio de sesión con «Tu sesión expiró. Inicia sesión de nuevo.».
-- **Ver más** pide la página siguiente y agrega las filas. Las filas se leen
-  `23/10 09:15 · Plástico · +10`; si no dieron puntos, `… · sin puntos`. Un
+- **Ver más** pide la página siguiente y agrega las filas. Cada fila muestra
+  el chip de material (`Plástico`, `Metal`, `Vidrio`, `Papel`, `Otro`), la hora
+  `dd/MM HH:mm` y la pastilla de puntos (`+10 pts`, o `0 pts` en gris). Un
   material nulo o desconocido se muestra como «Otro».
 - **Cerrar sesión** borra el token en local primero y luego llama al servidor
   en segundo plano; si no hay red, la sesión local igual queda cerrada.

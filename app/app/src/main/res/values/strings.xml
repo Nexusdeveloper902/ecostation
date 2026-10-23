@@ -4,25 +4,55 @@
     <string name="hce_description">Credencial EcoStation</string>
     <string name="aid_group_description">Credencial EcoStation</string>
 
+    <!-- Navegación inferior -->
+    <string name="nav_card">Tarjeta</string>
+    <string name="nav_speaker">Parlante</string>
+    <string name="nav_points">Mis puntos</string>
+    <string name="nav_settings">Ajustes</string>
+
     <!-- Cara de la tarjeta -->
     <string name="card_label">CREDENCIAL</string>
+    <string name="card_holder_default">Estudiante EcoStation</string>
     <string name="card_holder_hint">Añade tu nombre</string>
     <string name="card_edit">Editar</string>
 
     <!-- Estado de la tarjeta. Corto a propósito: se lee de lejos mientras el
          teléfono se acerca al lector. -->
     <string name="state_ready">LISTA</string>
+    <string name="state_ready_title">Lista para tocar</string>
     <string name="state_linked">CONECTADA</string>
     <string name="state_verified">VERIFICADA</string>
     <string name="state_nfc_off">NFC APAGADO</string>
     <string name="state_unsupported">NO COMPATIBLE</string>
 
+    <!-- Pastilla de estado sobre la tarjeta -->
+    <string name="chip_ready">Lista para tocar</string>
+    <string name="chip_linked">En el lector</string>
+    <string name="chip_verified">Verificada</string>
+    <string name="chip_linking">Vinculando…</string>
+    <string name="chip_link_sent">Llave enviada</string>
+    <string name="chip_nfc_off">NFC apagado</string>
+    <string name="chip_unsupported">No compatible</string>
+    <string name="chip_unlinked">Sin vincular</string>
+
     <!-- Guía bajo la tarjeta -->
-    <string name="hint_ready">Apoya el teléfono plano sobre el lector y mantenlo quieto.</string>
+    <string name="hint_ready">Acerca la parte trasera del teléfono al lector.\nNo necesitas abrir la app ni tener internet.</string>
     <string name="hint_linked">Lector conectado. No muevas el teléfono.</string>
     <string name="hint_verified">Credencial aceptada.</string>
     <string name="hint_nfc_off">Activa el NFC en Ajustes y vuelve aquí.</string>
     <string name="hint_unsupported">Este teléfono no tiene emulación de tarjeta, así que no puede funcionar como credencial.</string>
+
+    <!-- Sin vincular -->
+    <string name="unlinked_title">Usa tu teléfono como carné</string>
+    <string name="unlinked_body">Vincula este teléfono una sola vez. Después solo acércalo al lector de cualquier estación, como si fuera tu tarjeta.</string>
+    <string name="unlinked_step_1">Pídele a tu docente que te arme en Vinculación.</string>
+    <string name="unlinked_step_2">Toca «Vincular este teléfono».</string>
+    <string name="unlinked_step_3">Acércalo a una estación antes de 60 s.</string>
+    <string name="nfc_open_settings">Abrir ajustes de NFC</string>
+
+    <!-- Último toque -->
+    <string name="last_tap_today">Último toque: hoy %1$s</string>
+    <string name="last_tap_date">Último toque: %1$s</string>
 
     <!-- Diálogo del nombre -->
     <string name="name_title">Tu nombre</string>
@@ -32,7 +62,7 @@
     <string name="name_cancel">Cancelar</string>
 
     <!-- Diagnóstico (para el banco de pruebas) -->
-    <string name="diag_title">Diagnóstico</string>
+    <string name="diag_title">Diagnóstico técnico</string>
     <string name="diag_hce">Emulación de tarjeta</string>
     <string name="diag_routing">Enrutado del AID</string>
     <string name="diag_events">Intercambio con el lector</string>
@@ -43,37 +73,86 @@
     <string name="diag_audio">Salida de audio</string>
     <string name="diag_audio_body">%1$s\nToca aquí para probar los cinco sonidos.</string>
 
+    <!-- Modo parlante -->
+    <string name="speaker_title">Modo parlante</string>
+    <string name="speaker_server">Servidor</string>
+    <string name="speaker_bluetooth">Parlante Bluetooth</string>
+    <string name="speaker_account">Cuenta de estación</string>
+    <string name="speaker_connected">Conectado</string>
+    <string name="speaker_searching">Buscando</string>
+    <string name="speaker_retrying">Reintentando</string>
+    <string name="speaker_off">Apagado</string>
+    <string name="speaker_no_account">Sin cuenta</string>
+    <string name="speaker_account_active">Activa</string>
+    <string name="speaker_account_missing">Sin configurar</string>
+    <string name="speaker_phone_output">Teléfono</string>
+    <string name="speaker_signals">Últimas señales</string>
+    <string name="speaker_signals_empty">Todavía no hay señales</string>
+    <string name="speaker_server_address">Dirección del servidor</string>
+    <string name="speaker_server_auto">Búsqueda automática (mDNS)</string>
+    <string name="speaker_server_caption">Déjalo vacío para buscar el servidor con mDNS _ecostation._tcp.</string>
+    <string name="speaker_signal_meta">hoy · %1$s</string>
+    <string name="speaker_signal_cue">Sonido: %1$s</string>
+    <string name="cue_detected">Toque detectado</string>
+    <string name="cue_accepted">Toque aceptado</string>
+    <string name="cue_rejected">Toque rechazado</string>
+    <string name="cue_recycled">Material reciclado</string>
+    <string name="cue_not_recyclable">No reciclable</string>
+    <string name="sound_detected">Pip corto</string>
+    <string name="sound_accepted">Pip de aceptación</string>
+    <string name="sound_rejected">Pip de rechazo</string>
+    <string name="sound_recycled">Melodía de puntos</string>
+    <string name="sound_not_recyclable">Tono grave</string>
+
     <!-- Ajustes -->
     <string name="settings_open">Ajustes</string>
     <string name="settings_title">Ajustes</string>
-    <string name="settings_server_label">Dirección del servidor (opcional)</string>
+    <string name="settings_server_eyebrow">Servidor</string>
+    <string name="settings_server_label">Dirección del servidor</string>
     <string name="settings_server_hint">192.168.1.10:8000</string>
+    <string name="settings_auto">Buscar automáticamente</string>
+    <string name="settings_auto_caption">mDNS · _ecostation._tcp</string>
+    <string name="settings_test">Probar conexión</string>
+    <string name="settings_testing">Probando…</string>
+    <string name="settings_connected">Conectado · %1$d ms</string>
+    <string name="settings_no_connection">Sin conexión</string>
     <string name="settings_speaker">Modo parlante</string>
-    <string name="settings_email_label">Correo de la cuenta del parlante</string>
+    <string name="settings_account_eyebrow">Cuenta del parlante</string>
+    <string name="settings_email_label">Correo de la estación</string>
     <string name="settings_email_hint">estacion@ecostation.co</string>
     <string name="settings_password_label">Contraseña</string>
     <string name="settings_password_hint">Contraseña de la cuenta del parlante</string>
     <string name="settings_password_saved">Contraseña guardada — escribe para cambiarla</string>
     <string name="settings_bad_address">Dirección no válida</string>
     <string name="settings_save">Guardar</string>
+    <string name="settings_login_speaker">Iniciar sesión del parlante</string>
+    <string name="settings_version">EcoStation 1.0.0 · co.ecostation.app</string>
 
     <!-- Vista del estudiante -->
     <string name="student_open">Mis puntos</string>
     <string name="student_title">Mis puntos</string>
-    <string name="student_email">Correo</string>
+    <string name="student_login_title">Mira tus puntos</string>
+    <string name="student_login_subtitle">Entra con el mismo correo y contraseña del colegio.</string>
+    <string name="student_login_note">Tu tarjeta en el teléfono funciona aunque no inicies sesión.</string>
+    <string name="student_email">Correo institucional</string>
     <string name="student_password">Contraseña</string>
     <string name="student_login">Entrar</string>
+    <string name="student_change_title">Cambia tu contraseña</string>
     <string name="student_change_note">Debes cambiar tu contraseña para continuar</string>
     <string name="student_current_password">Contraseña actual</string>
     <string name="student_new_password">Contraseña nueva</string>
     <string name="student_repeat_password">Repite la contraseña nueva</string>
     <string name="student_change_button">Cambiar contraseña</string>
-    <string name="student_history">Historial de depósitos</string>
+    <string name="student_balance_label">Tu saldo</string>
+    <string name="student_history">Historial</string>
     <string name="student_empty">Aún no tienes depósitos</string>
     <string name="student_more">Ver más</string>
     <string name="student_logout">Cerrar sesión</string>
-    <string name="student_balance">Saldo: %1$d puntos</string>
-    <string name="student_rank">Puesto: %1$d</string>
+    <string name="student_balance">%1$s pts</string>
+    <string name="student_rank">Puesto %1$d</string>
+    <string name="student_week_chip">Esta semana</string>
+    <string name="student_points_badge">+%1$d pts</string>
+    <string name="student_zero_points">0 pts</string>
     <string name="student_password_mismatch">Las contraseñas no coinciden</string>
     <string name="student_error_session">Tu sesión expiró. Inicia sesión de nuevo.</string>
     <string name="student_error_credentials">Correo o contraseña incorrectos, o la cuenta no es de estudiante</string>
@@ -89,9 +168,10 @@
     <string name="link_start">Empezar</string>
     <string name="link_failed">Este teléfono no pudo crear su llave segura. Inténtalo de nuevo; si sigue fallando, este teléfono no puede ser credencial.</string>
     <string name="state_linking">VINCULANDO %1$d:%2$02d</string>
+    <string name="state_linking_title">Acércate a cualquier estación</string>
     <string name="state_link_sent">LLAVE ENVIADA</string>
     <string name="state_unlinked">SIN VINCULAR</string>
-    <string name="hint_linking">Acerca el teléfono al lector en modo EMPAREJAR (%1$d s).</string>
+    <string name="hint_linking">Mantén el teléfono sobre el lector hasta oír el pitido. Tienes %1$d segundos.</string>
     <string name="hint_link_sent">El lector recibió la llave. Confirma en la mesa que quedó emparejado.</string>
     <string name="hint_unlinked">Este teléfono aún no tiene llave. En la mesa de emparejamiento toca «Vincular este teléfono».</string>
     <string name="diag_key">Llave de la credencial</string>

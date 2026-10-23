@@ -1,45 +1,61 @@
 package co.ecostation.app
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Switch
 import android.widget.TextView
+import co.ecostation.app.net.BackendDiscovery
 import co.ecostation.app.net.EcoEndpoint
 import co.ecostation.app.store.AppSettings
+import co.ecostation.app.ui.BottomNav
+import co.ecostation.app.ui.EcoTab
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
- * Formulario plano de ajustes: dirección manual del servidor, interruptor de
- * modo parlante y la cuenta de la estación. La contraseña nunca se muestra ni
- * se vuelve a escribir en claro: si ya hay una guardada, el campo queda vacío
- * con una pista y solo se reemplaza cuando la persona escribe una nueva.
+ * Ajustes: servidor (dirección manual o mDNS) y cuenta del parlante.
+ *
+ * La contraseña nunca se muestra ni se vuelve a escribir en claro: si ya hay
+ * una guardada, el campo queda vacío con una pista y solo se reemplaza cuando
+ * la persona escribe una nueva. Una dirección no vacía que
+ * [EcoEndpoint.parseManual] rechaza no guarda nada.
  */
 class SettingsActivity : Activity() {
 
     private lateinit var settings: AppSettings
+    private lateinit var discovery: BackendDiscovery
     private lateinit var address: EditText
-    private lateinit var speaker: Switch
+    private lateinit var autoDiscover: Switch
     private lateinit var email: EditText
     private lateinit var password: EditText
     private lateinit var error: TextView
+    private lateinit var testButton: Button
+    private lateinit var connectionStatus: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
         settings = AppSettings(this)
+        discovery = BackendDiscovery(this)
 
         address = findViewById(R.id.serverAddress)
-        speaker = findViewById(R.id.speakerEnabled)
+        autoDiscover = findViewById(R.id.autoDiscover)
         email = findViewById(R.id.speakerEmail)
         password = findViewById(R.id.speakerPassword)
         error = findViewById(R.id.addressError)
-        findViewById<Button>(R.id.saveSettings).setOnClickListener { save() }
+        testButton = findViewById(R.id.testConnection)
+        connectionStatus = findViewById(R.id.connectionStatus)
 
         address.setText(settings.serverAddress.orEmpty())
-        speaker.isChecked = settings.speakerEnabled
+        autoDiscover.isChecked = settings.serverAddress.isNullOrBlank()
         email.setText(settings.speakerEmail.orEmpty())
 
         password.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -47,6 +63,31 @@ class SettingsActivity : Activity() {
             if (settings.speakerPassword != null) R.string.settings_password_saved
             else R.string.settings_password_hint,
         )
+
+        autoDiscover.setOnCheckedChangeListener { _, checked ->
+            if (checked) {
+                address.setText("")
+                error.visibility = View.GONE
+            } else {
+                address.requestFocus()
+            }
+        }
+        // Escribir una dirección a mano implica no buscar automáticamente.
+        // Se escucha el texto, no el foco: el campo puede recibir foco solo al
+        // abrir la pantalla y no queremos apagar la búsqueda sin que nadie escriba.
+        address.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: Editable?) {
+                if (!s.isNullOrBlank() && autoDiscover.isChecked) autoDiscover.isChecked = false
+            }
+        })
+
+        testButton.setOnClickListener { testConnection() }
+        findViewById<Button>(R.id.saveSettings).setOnClickListener { save() }
+
+        findViewById<TextView>(R.id.topBarTitle).setText(R.string.settings_title)
+        BottomNav.bind(this, EcoTab.SETTINGS)
     }
 
     /**
@@ -55,8 +96,13 @@ class SettingsActivity : Activity() {
      */
     private fun save() {
         val typed = address.text.toString().trim()
-        val endpoint = if (typed.isEmpty()) null else EcoEndpoint.parseManual(typed)
-        if (typed.isNotEmpty() && endpoint == null) {
+        if (!autoDiscover.isChecked && typed.isEmpty()) {
+            error.setText(R.string.settings_bad_address)
+            error.visibility = View.VISIBLE
+            return
+        }
+        val endpoint = if (autoDiscover.isChecked) null else EcoEndpoint.parseManual(typed)
+        if (!autoDiscover.isChecked && endpoint == null) {
             error.setText(R.string.settings_bad_address)
             error.visibility = View.VISIBLE
             return
@@ -64,10 +110,86 @@ class SettingsActivity : Activity() {
         error.visibility = View.GONE
 
         settings.serverAddress = endpoint?.toString()
-        settings.speakerEnabled = speaker.isChecked
         settings.speakerEmail = email.text.toString().trim().ifEmpty { null }
         val newPassword = password.text.toString()
         if (newPassword.isNotEmpty()) settings.speakerPassword = newPassword
+        // «Iniciar sesión del parlante» deja el modo encendido y vuelve a la
+        // pestaña Parlante, donde el interruptor y el estado quedan a la vista.
+        settings.speakerEnabled = true
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_SECTION, MainActivity.SECTION_SPEAKER)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        )
         finish()
+    }
+
+    /**
+     * Prueba de conectividad: descubre o usa la dirección escrita y pide
+     * `/manifest.webmanifest` con timeouts cortos. Corre en un hilo propio y
+     * nunca lanza: sin red solo muestra «Sin conexión».
+     */
+    private fun testConnection() {
+        val typed = if (autoDiscover.isChecked) null else address.text.toString().trim().ifEmpty { null }
+        if (!autoDiscover.isChecked && typed == null) {
+            error.setText(R.string.settings_bad_address)
+            error.visibility = View.VISIBLE
+            return
+        }
+        if (typed != null && EcoEndpoint.parseManual(typed) == null) {
+            error.setText(R.string.settings_bad_address)
+            error.visibility = View.VISIBLE
+            return
+        }
+        error.visibility = View.GONE
+        testButton.isEnabled = false
+        setStatus(getString(R.string.settings_testing), R.drawable.ic_dot_amber, R.color.eco_warning_text)
+
+        Thread({
+            var latency = -1L
+            try {
+                val endpoint = EcoEndpoint.locate(typed) { discovery.discover { } }
+                if (endpoint != null) {
+                    val started = SystemClock.elapsedRealtime()
+                    val conn = URL(endpoint.baseUrl + "/manifest.webmanifest")
+                        .openConnection() as HttpURLConnection
+                    conn.connectTimeout = 2_500
+                    conn.readTimeout = 2_500
+                    conn.instanceFollowRedirects = false
+                    val code = conn.responseCode
+                    val body = if (code == 200) {
+                        conn.inputStream.bufferedReader().use { it.readText() }
+                    } else {
+                        conn.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    }
+                    conn.disconnect()
+                    if (code == 200 && body.contains("\"start_url\"")) {
+                        latency = SystemClock.elapsedRealtime() - started
+                    }
+                }
+            } catch (_: Exception) {
+                // Sin red, DNS roto o timeout: se informa abajo, nunca se lanza.
+            }
+            val ok = latency >= 0
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                testButton.isEnabled = true
+                if (ok) {
+                    setStatus(
+                        getString(R.string.settings_connected, latency),
+                        R.drawable.ic_dot_green,
+                        R.color.eco_success_text,
+                    )
+                } else {
+                    setStatus(getString(R.string.settings_no_connection), R.drawable.ic_dot_red, R.color.eco_danger_text)
+                }
+            }
+        }, "eco-test").apply { isDaemon = true; start() }
+    }
+
+    private fun setStatus(text: String, dot: Int, color: Int) {
+        connectionStatus.text = text
+        connectionStatus.setTextColor(getColor(color))
+        connectionStatus.setCompoundDrawablesWithIntrinsicBounds(dot, 0, 0, 0)
     }
 }

@@ -3,11 +3,11 @@ package co.ecostation.app
 import android.app.Activity
 import android.os.Bundle
 import android.text.InputType
+import android.text.SpannableString
+import android.text.style.RelativeSizeSpan
 import android.view.View
-import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
-import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.TextView
 import co.ecostation.app.net.BackendDiscovery
@@ -16,10 +16,12 @@ import co.ecostation.app.student.ApiException
 import co.ecostation.app.student.Balance
 import co.ecostation.app.student.Deposit
 import co.ecostation.app.student.StudentApi
-import co.ecostation.app.student.displayTime
-import co.ecostation.app.student.materialLabel
 import co.ecostation.app.store.AppSettings
+import co.ecostation.app.ui.BottomNav
+import co.ecostation.app.ui.DepositAdapter
+import co.ecostation.app.ui.EcoTab
 import java.io.IOException
+import java.util.Locale
 
 /**
  * Vista del estudiante: entrar, cambiar la contraseña cuando el servidor lo
@@ -35,9 +37,9 @@ class StudentActivity : Activity() {
     private lateinit var discovery: BackendDiscovery
     private var endpoint: EcoEndpoint? = null
 
-    private lateinit var loginGroup: LinearLayout
-    private lateinit var changeGroup: LinearLayout
-    private lateinit var accountGroup: LinearLayout
+    private lateinit var loginGroup: View
+    private lateinit var changeGroup: View
+    private lateinit var accountGroup: View
 
     private lateinit var loginEmail: EditText
     private lateinit var loginPassword: EditText
@@ -60,8 +62,8 @@ class StudentActivity : Activity() {
     private lateinit var moreButton: Button
     private lateinit var logoutButton: Button
 
-    private val rows = ArrayList<String>()
-    private lateinit var rowAdapter: ArrayAdapter<String>
+    private val rows = ArrayList<Deposit>()
+    private lateinit var rowAdapter: DepositAdapter
     private var page = 1
     private var hasMore = false
 
@@ -101,8 +103,11 @@ class StudentActivity : Activity() {
         moreButton = findViewById(R.id.moreButton)
         logoutButton = findViewById(R.id.logoutButton)
 
-        rowAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, rows)
+        rowAdapter = DepositAdapter(this)
         historyList.adapter = rowAdapter
+
+        findViewById<TextView>(R.id.topBarTitle).setText(R.string.student_title)
+        BottomNav.bind(this, EcoTab.POINTS)
 
         loginButton.setOnClickListener { login() }
         changeButton.setOnClickListener { changePassword() }
@@ -246,8 +251,8 @@ class StudentActivity : Activity() {
                 page = 1
                 hasMore = history.hasMore
                 rows.clear()
-                rows.addAll(history.items.map(::row))
-                rowAdapter.notifyDataSetChanged()
+                rows.addAll(history.items)
+                rowAdapter.setItems(rows)
                 renderAccount(balance)
             }
         } catch (e: ApiException) {
@@ -279,8 +284,8 @@ class StudentActivity : Activity() {
                 ui {
                     page = next
                     hasMore = history.hasMore
-                    rows.addAll(history.items.map(::row))
-                    rowAdapter.notifyDataSetChanged()
+                    rows.addAll(history.items)
+                    rowAdapter.addItems(history.items)
                     moreButton.isEnabled = true
                     moreButton.visibility = if (hasMore) View.VISIBLE else View.GONE
                 }
@@ -336,11 +341,6 @@ class StudentActivity : Activity() {
 
     // ---------------------------------------------------------------- render
 
-    private fun row(deposit: Deposit): String {
-        val points = if (deposit.points > 0) "+${deposit.points}" else "sin puntos"
-        return "${displayTime(deposit.occurredAt)} · ${materialLabel(deposit.materialClass)} · $points"
-    }
-
     private fun renderAccount(balance: Balance) {
         loginGroup.visibility = View.GONE
         changeGroup.visibility = View.GONE
@@ -350,7 +350,11 @@ class StudentActivity : Activity() {
         studentName.text = balance.student.name
         studentClass.text = balance.student.className.orEmpty()
         studentClass.visibility = if (balance.student.className.isNullOrBlank()) View.GONE else View.VISIBLE
-        balanceText.text = getString(R.string.student_balance, balance.balance)
+        val figure = formatPoints(balance.balance)
+        val full = getString(R.string.student_balance, figure)
+        balanceText.text = SpannableString(full).apply {
+            setSpan(RelativeSizeSpan(0.45f), figure.length, full.length, 0)
+        }
         if (balance.rank == null) {
             rankText.visibility = View.GONE
         } else {
@@ -362,6 +366,9 @@ class StudentActivity : Activity() {
         moreButton.visibility = if (hasMore) View.VISIBLE else View.GONE
         moreButton.isEnabled = true
     }
+
+    private fun formatPoints(value: Int): String =
+        String.format(Locale.US, "%,d", value).replace(',', '.')
 
     private fun showAccountError(messageRes: Int) {
         loginGroup.visibility = View.GONE

@@ -1,4 +1,197 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.EcoStation" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!--
+      Tema de la app. La barra de estado es menta con iconos oscuros; la barra
+      de navegación del sistema queda blanca. Sin ActionBar: cada pantalla pinta
+      su propia barra superior de 64 dp.
+    -->
+    <style name="Theme.EcoStation.Base" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/eco_mint</item>
+        <item name="android:statusBarColor">@color/eco_mint</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:navigationBarColor">@color/eco_ink</item>
+        <item name="android:colorAccent">@color/eco_primary_strong</item>
+        <item name="android:colorControlActivated">@color/eco_primary_strong</item>
+        <item name="android:colorControlHighlight">#3318B26B</item>
+        <item name="android:colorPrimary">@color/eco_primary_strong</item>
+        <item name="android:colorPrimaryDark">@color/eco_mint</item>
+        <item name="android:textColorPrimary">@color/eco_ink</item>
+        <item name="android:textColorSecondary">@color/eco_slate</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+
+    <style name="Theme.EcoStation" parent="Theme.EcoStation.Base" />
+
+    <!-- ============================ Tipografía ============================ -->
+
+    <style name="Eco.Text" parent="@android:style/TextAppearance.Material">
+        <item name="android:textColor">@color/eco_ink</item>
+        <item name="ecoFont">body</item>
+    </style>
+
+    <style name="Eco.Text.Display">
+        <item name="ecoFont">display</item>
+        <item name="android:textSize">56sp</item>
+        <item name="android:lineSpacingMultiplier">1.08</item>
+        <item name="android:textColor">@color/eco_ink</item>
+    </style>
+
+    <style name="Eco.Text.H1">
+        <item name="ecoFont">display</item>
+        <item name="android:textSize">40sp</item>
+        <item name="android:lineSpacingMultiplier">1.08</item>
+        <item name="android:textColor">@color/eco_ink</item>
+    </style>
+
+    <style name="Eco.Text.H2">
+        <item name="ecoFont">heading</item>
+        <item name="android:textSize">28sp</item>
+        <item name="android:lineSpacingMultiplier">1.1</item>
+        <item name="android:textColor">@color/eco_ink</item>
+    </style>
+
+    <style name="Eco.Text.H3">
+        <item name="ecoFont">heading</item>
+        <item name="android:textSize">24sp</item>
+        <item name="android:lineSpacingMultiplier">1.1</item>
+        <item name="android:textColor">@color/eco_ink</item>
+    </style>
+
+    <style name="Eco.Text.Body">
+        <item name="ecoFont">body</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:lineSpacingMultiplier">1.25</item>
+        <item name="android:textColor">@color/eco_ink</item>
+    </style>
+
+    <style name="Eco.Text.Caption" parent="Eco.Text">
+        <item name="ecoFont">body</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:lineSpacingMultiplier">1.2</item>
+        <item name="android:textColor">@color/eco_slate</item>
+    </style>
+
+    <style name="Eco.Text.BodySmall">
+        <item name="ecoFont">body</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:lineSpacingMultiplier">1.2</item>
+        <item name="android:textColor">@color/eco_ink</item>
+    </style>
+
+    <style name="Eco.Text.Label">
+        <item name="ecoFont">bold</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:lineSpacingMultiplier">1.15</item>
+        <item name="android:textColor">@color/eco_ink</item>
+    </style>
+
+    <style name="Eco.Text.Micro">
+        <item name="ecoFont">bold</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:letterSpacing">0.01</item>
+        <item name="android:textColor">@color/eco_slate</item>
+    </style>
+
+    <style name="Eco.Text.Eyebrow">
+        <item name="ecoFont">bold</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:letterSpacing">0.1</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:textColor">@color/eco_primary_deep</item>
+    </style>
+
+    <style name="Eco.Text.Figures">
+        <item name="ecoFont">mono</item>
+        <item name="android:textSize">32sp</item>
+        <item name="android:textColor">@color/eco_ink</item>
+    </style>
+
+    <style name="Eco.Text.Mono">
+        <item name="ecoFont">mono</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">@color/eco_ink</item>
+    </style>
+
+    <!-- ============================ Controles ============================= -->
+
+    <style name="Eco.Button" parent="@android:style/Widget.Material.Button">
+        <item name="android:layout_height">@dimen/button_height</item>
+        <item name="android:background">@drawable/bg_button_primary</item>
+        <item name="ecoFont">bold</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">@color/eco_white</item>
+        <item name="android:letterSpacing">0.01</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:minHeight">0dp</item>
+        <item name="android:paddingStart">@dimen/space_5</item>
+        <item name="android:paddingEnd">@dimen/space_5</item>
+        <item name="android:stateListAnimator">@null</item>
+    </style>
+
+    <style name="Eco.Button.Primary" parent="Eco.Button" />
+
+    <style name="Eco.Button.Secondary" parent="Eco.Button">
+        <item name="android:background">@drawable/bg_button_secondary</item>
+    </style>
+
+    <style name="Eco.Button.Outline" parent="Eco.Button">
+        <item name="android:background">@drawable/bg_button_outline</item>
+        <item name="android:textColor">@color/eco_primary_strong</item>
+    </style>
+
+    <style name="Eco.Button.Danger" parent="Eco.Button">
+        <item name="android:background">@drawable/bg_button_danger</item>
+    </style>
+
+    <style name="Eco.Button.Ghost" parent="Eco.Button">
+        <item name="android:background">@drawable/bg_button_ghost</item>
+        <item name="android:textColor">@color/eco_primary_strong</item>
+    </style>
+
+    <style name="Eco.Input" parent="@android:style/Widget.Material.EditText">
+        <item name="android:layout_height">@dimen/input_height</item>
+        <item name="android:background">@drawable/bg_input</item>
+        <item name="ecoFont">body</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@color/eco_ink</item>
+        <item name="android:textColorHint">@color/eco_slate</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">@dimen/space_4</item>
+        <item name="android:paddingEnd">@dimen/space_4</item>
+        <item name="android:paddingTop">0dp</item>
+        <item name="android:paddingBottom">0dp</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:drawablePadding">@dimen/space_2</item>
+        <item name="android:drawableTint">@color/eco_slate</item>
+    </style>
+
+    <style name="Eco.Switch" parent="@android:style/Widget.Material.CompoundButton.Switch">
+        <item name="android:thumbTint">@color/switch_thumb</item>
+        <item name="android:trackTint">@color/switch_track</item>
+    </style>
+
+    <style name="Eco.Card" parent="@android:style/Widget.Material">
+        <item name="android:background">@drawable/bg_card_white</item>
+        <item name="android:padding">@dimen/space_4</item>
+        <item name="android:elevation">2dp</item>
+    </style>
+
+    <style name="Eco.Divider" parent="@android:style/Widget.Material">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">1dp</item>
+        <item name="android:background">@color/eco_mist</item>
+    </style>
+
+    <!-- Etiquetas de campo: 14/20 Nunito 700. -->
+    <style name="Eco.FieldLabel" parent="Eco.Text.Label">
+        <item name="android:layout_marginBottom">@dimen/space_2</item>
+    </style>
+
+    <style name="Eco.SectionGap" parent="@android:style/Widget.Material">
+        <item name="android:layout_marginTop">@dimen/space_5</item>
+    </style>
 </resources>

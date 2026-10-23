@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Escala base 4 de DESIGN-SPEC.md §3. -->
+    <dimen name="space_1">4dp</dimen>
+    <dimen name="space_2">8dp</dimen>
+    <dimen name="space_3">12dp</dimen>
+    <dimen name="space_4">16dp</dimen>
+    <dimen name="space_5">24dp</dimen>
+    <dimen name="space_6">32dp</dimen>
+    <dimen name="space_7">48dp</dimen>
+    <dimen name="space_8">64dp</dimen>
+
+    <dimen name="radius_xs">4dp</dimen>
+    <dimen name="radius_sm">8dp</dimen>
+    <dimen name="radius_md">12dp</dimen>
+    <dimen name="radius_lg">16dp</dimen>
+    <dimen name="radius_xl">24dp</dimen>
+    <dimen name="radius_pill">999dp</dimen>
+
+    <dimen name="screen_padding">20dp</dimen>
+    <dimen name="top_bar_height">64dp</dimen>
+    <dimen name="bottom_nav_height">76dp</dimen>
+    <dimen name="button_height">48dp</dimen>
+    <dimen name="input_height">48dp</dimen>
+    <dimen name="icon_tab">24dp</dimen>
+    <dimen name="icon_row">20dp</dimen>
+    <dimen name="icon_tile">36dp</dimen>
+    <dimen name="card_padding">18dp</dimen>
+    <dimen name="card_radius">24dp</dimen>
+    <dimen name="tap_target">220dp</dimen>
+    <dimen name="boti_header">28dp</dimen>
+    <dimen name="boti_login">132dp</dimen>
+    <dimen name="boti_balance">92dp</dimen>
+</resources>

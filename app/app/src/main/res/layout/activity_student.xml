@@ -1,220 +1,420 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/eco_mint"
+    android:orientation="vertical">
 
-    <LinearLayout
+    <include layout="@layout/view_top_bar" />
+
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="24dp">
+        android:layout_height="0dp"
+        android:layout_weight="1">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/student_title"
-            android:textSize="24sp"
-            android:textStyle="bold" />
-
-        <!-- Grupo 1: iniciar sesión -->
-        <LinearLayout
+        <!-- ===================== Grupo 1: iniciar sesión ==================== -->
+        <ScrollView
             android:id="@+id/loginGroup"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:orientation="vertical">
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:fillViewport="true"
+            android:scrollbars="none">
 
-            <TextView
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/student_email" />
+                android:orientation="vertical"
+                android:paddingStart="@dimen/space_5"
+                android:paddingTop="@dimen/space_3"
+                android:paddingEnd="@dimen/space_5"
+                android:paddingBottom="@dimen/space_5">
 
-            <EditText
-                android:id="@+id/loginEmail"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textEmailAddress"
-                android:maxLines="1" />
+                <ImageView
+                    android:layout_width="@dimen/boti_login"
+                    android:layout_height="@dimen/boti_login"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="@dimen/space_4"
+                    android:adjustViewBounds="true"
+                    android:contentDescription="@null"
+                    android:src="@drawable/boti" />
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="@string/student_password" />
+                <co.ecostation.app.ui.EcoTextView
+                    style="@style/Eco.Text.H1"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_3"
+                    android:gravity="center"
+                    android:text="@string/student_login_title"
+                    android:textSize="36sp" />
 
-            <EditText
-                android:id="@+id/loginPassword"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textPassword"
-                android:maxLines="1" />
+                <co.ecostation.app.ui.EcoTextView
+                    style="@style/Eco.Text.BodySmall"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_2"
+                    android:gravity="center"
+                    android:text="@string/student_login_subtitle"
+                    android:textColor="@color/eco_slate" />
 
-            <Button
-                android:id="@+id/loginButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
-                android:text="@string/student_login" />
+                <co.ecostation.app.ui.EcoTextView
+                    style="@style/Eco.FieldLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_5"
+                    android:text="@string/student_email" />
 
-            <TextView
-                android:id="@+id/loginError"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:textColor="#B00020"
-                android:visibility="gone" />
-        </LinearLayout>
+                <co.ecostation.app.ui.EcoEditText
+                    android:id="@+id/loginEmail"
+                    style="@style/Eco.Input"
+                    android:layout_width="match_parent"
+                    android:drawableStart="@drawable/ic_mail_18"
+                    android:hint="@string/student_email"
+                    android:inputType="textEmailAddress" />
 
-        <!-- Grupo 2: cambio obligatorio de contraseña -->
-        <LinearLayout
+                <co.ecostation.app.ui.EcoTextView
+                    style="@style/Eco.FieldLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_4"
+                    android:text="@string/student_password" />
+
+                <co.ecostation.app.ui.EcoEditText
+                    android:id="@+id/loginPassword"
+                    style="@style/Eco.Input"
+                    android:layout_width="match_parent"
+                    android:drawableStart="@drawable/ic_lock_18"
+                    android:hint="@string/student_password"
+                    android:inputType="textPassword" />
+
+                <co.ecostation.app.ui.EcoButton
+                    android:id="@+id/loginButton"
+                    style="@style/Eco.Button.Primary"
+                    android:layout_width="match_parent"
+                    android:layout_marginTop="@dimen/space_5"
+                    android:text="@string/student_login" />
+
+                <co.ecostation.app.ui.EcoTextView
+                    android:id="@+id/loginError"
+                    style="@style/Eco.Text.Micro"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_4"
+                    android:background="@drawable/bg_pill_danger"
+                    android:padding="@dimen/space_3"
+                    android:textColor="@color/eco_danger_text"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+
+                <co.ecostation.app.ui.EcoTextView
+                    style="@style/Eco.Text.Micro"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_5"
+                    android:gravity="center"
+                    android:text="@string/student_login_note" />
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- ================= Grupo 2: cambio obligatorio =================== -->
+        <ScrollView
             android:id="@+id/changeGroup"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:orientation="vertical"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:fillViewport="true"
+            android:scrollbars="none"
             android:visibility="gone">
 
-            <TextView
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/student_change_note"
-                android:textStyle="bold" />
+                android:orientation="vertical"
+                android:padding="@dimen/space_5">
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="@string/student_current_password" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_card_white"
+                    android:elevation="2dp"
+                    android:orientation="vertical"
+                    android:padding="@dimen/space_5">
 
-            <EditText
-                android:id="@+id/changeCurrent"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textPassword"
-                android:maxLines="1" />
+                    <co.ecostation.app.ui.EcoTextView
+                        style="@style/Eco.Text.H2"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/student_change_title" />
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="@string/student_new_password" />
+                    <co.ecostation.app.ui.EcoTextView
+                        style="@style/Eco.Text.BodySmall"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_2"
+                        android:text="@string/student_change_note"
+                        android:textColor="@color/eco_slate" />
 
-            <EditText
-                android:id="@+id/changeNew"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textPassword"
-                android:maxLines="1" />
+                    <co.ecostation.app.ui.EcoTextView
+                        style="@style/Eco.FieldLabel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_5"
+                        android:text="@string/student_current_password" />
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="@string/student_repeat_password" />
+                    <co.ecostation.app.ui.EcoEditText
+                        android:id="@+id/changeCurrent"
+                        style="@style/Eco.Input"
+                        android:layout_width="match_parent"
+                        android:drawableStart="@drawable/ic_lock_18"
+                        android:hint="@string/student_current_password"
+                        android:inputType="textPassword" />
 
-            <EditText
-                android:id="@+id/changeConfirm"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textPassword"
-                android:maxLines="1" />
+                    <co.ecostation.app.ui.EcoTextView
+                        style="@style/Eco.FieldLabel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_4"
+                        android:text="@string/student_new_password" />
 
-            <Button
-                android:id="@+id/changeButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
-                android:text="@string/student_change_button" />
+                    <co.ecostation.app.ui.EcoEditText
+                        android:id="@+id/changeNew"
+                        style="@style/Eco.Input"
+                        android:layout_width="match_parent"
+                        android:drawableStart="@drawable/ic_lock_18"
+                        android:hint="@string/student_new_password"
+                        android:inputType="textPassword" />
 
-            <TextView
-                android:id="@+id/changeError"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:textColor="#B00020"
-                android:visibility="gone" />
-        </LinearLayout>
+                    <co.ecostation.app.ui.EcoTextView
+                        style="@style/Eco.FieldLabel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_4"
+                        android:text="@string/student_repeat_password" />
 
-        <!-- Grupo 3: cuenta, saldo e historial -->
+                    <co.ecostation.app.ui.EcoEditText
+                        android:id="@+id/changeConfirm"
+                        style="@style/Eco.Input"
+                        android:layout_width="match_parent"
+                        android:drawableStart="@drawable/ic_lock_18"
+                        android:hint="@string/student_repeat_password"
+                        android:inputType="textPassword" />
+
+                    <co.ecostation.app.ui.EcoButton
+                        android:id="@+id/changeButton"
+                        style="@style/Eco.Button.Primary"
+                        android:layout_width="match_parent"
+                        android:layout_marginTop="@dimen/space_5"
+                        android:text="@string/student_change_button" />
+
+                    <co.ecostation.app.ui.EcoTextView
+                        android:id="@+id/changeError"
+                        style="@style/Eco.Text.Micro"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_4"
+                        android:background="@drawable/bg_pill_danger"
+                        android:padding="@dimen/space_3"
+                        android:textColor="@color/eco_danger_text"
+                        android:textSize="13sp"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- ================== Grupo 3: cuenta e historial ================== -->
         <LinearLayout
             android:id="@+id/accountGroup"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
+            android:layout_height="match_parent"
             android:orientation="vertical"
             android:visibility="gone">
 
-            <TextView
-                android:id="@+id/studentName"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textSize="24sp"
-                android:textStyle="bold" />
+                android:orientation="vertical"
+                android:paddingStart="@dimen/screen_padding"
+                android:paddingTop="@dimen/space_2"
+                android:paddingEnd="@dimen/screen_padding">
 
-            <TextView
-                android:id="@+id/studentClass"
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_hero_green"
+                    android:elevation="3dp"
+                    android:orientation="vertical"
+                    android:padding="@dimen/space_5">
+
+                    <co.ecostation.app.ui.EcoTextView
+                        android:id="@+id/studentName"
+                        style="@style/Eco.Text.H3"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:textColor="@color/eco_white" />
+
+                    <co.ecostation.app.ui.EcoTextView
+                        android:id="@+id/studentClass"
+                        style="@style/Eco.Text.Micro"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        app:ecoFont="body"
+                        android:maxLines="1"
+                        android:textColor="@color/card_text_soft"
+                        android:textSize="14sp" />
+
+                    <co.ecostation.app.ui.EcoTextView
+                        style="@style/Eco.Text.Label"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_4"
+                        android:text="@string/student_balance_label"
+                        android:textColor="#D8F5E6" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="bottom"
+                        android:orientation="horizontal">
+
+                        <co.ecostation.app.ui.EcoTextView
+                            android:id="@+id/balanceText"
+                            style="@style/Eco.Text.Figures"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            app:ecoFont="mono"
+                            android:textColor="@color/eco_white"
+                            android:textSize="40sp" />
+
+                        <ImageView
+                            android:layout_width="@dimen/boti_balance"
+                            android:layout_height="@dimen/boti_balance"
+                            android:adjustViewBounds="true"
+                            android:contentDescription="@null"
+                            android:src="@drawable/boti" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_2"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <co.ecostation.app.ui.EcoTextView
+                            android:id="@+id/rankText"
+                            style="@style/Eco.Text.Micro"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/bg_pill_white"
+                            android:paddingStart="10dp"
+                            android:paddingTop="5dp"
+                            android:paddingEnd="10dp"
+                            android:paddingBottom="5dp"
+                            android:textColor="@color/eco_primary_strong"
+                            android:visibility="gone" />
+
+                        <co.ecostation.app.ui.EcoTextView
+                            style="@style/Eco.Text.Micro"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/space_2"
+                            android:background="@drawable/bg_pill_sun"
+                            android:drawableStart="@drawable/ic_star"
+                            android:drawablePadding="5dp"
+                            android:paddingStart="10dp"
+                            android:paddingTop="5dp"
+                            android:paddingEnd="10dp"
+                            android:paddingBottom="5dp"
+                            android:text="@string/student_week_chip"
+                            android:textColor="@color/eco_ink" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <co.ecostation.app.ui.EcoTextView
+                    style="@style/Eco.Text.H2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_4"
+                    android:text="@string/student_history" />
+
+                <co.ecostation.app.ui.EcoTextView
+                    android:id="@+id/accountError"
+                    style="@style/Eco.Text.Micro"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_2"
+                    android:background="@drawable/bg_pill_danger"
+                    android:padding="@dimen/space_3"
+                    android:textColor="@color/eco_danger_text"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <!--
+              El historial es el único elemento que hace scroll: el ListView
+              ocupa el alto restante en vez de anidarse dentro de un ScrollView.
+            -->
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="@dimen/space_2"
+                android:layout_weight="1"
+                android:paddingStart="@dimen/screen_padding"
+                android:paddingEnd="@dimen/screen_padding">
+
+                <ListView
+                    android:id="@+id/historyList"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:cacheColorHint="@android:color/transparent"
+                    android:divider="@color/eco_mist"
+                    android:dividerHeight="1dp"
+                    android:listSelector="@android:color/transparent"
+                    android:scrollbars="none" />
+
+                <co.ecostation.app.ui.EcoTextView
+                    android:id="@+id/emptyHistory"
+                    style="@style/Eco.Text.BodySmall"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:gravity="center"
+                    android:padding="@dimen/space_5"
+                    android:text="@string/student_empty"
+                    android:textColor="@color/eco_slate"
+                    android:visibility="gone" />
+            </FrameLayout>
+
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp" />
+                android:orientation="vertical"
+                android:paddingStart="@dimen/screen_padding"
+                android:paddingTop="@dimen/space_2"
+                android:paddingEnd="@dimen/screen_padding"
+                android:paddingBottom="@dimen/space_2">
 
-            <TextView
-                android:id="@+id/balanceText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:textSize="20sp"
-                android:textStyle="bold" />
+                <co.ecostation.app.ui.EcoButton
+                    android:id="@+id/moreButton"
+                    style="@style/Eco.Button.Outline"
+                    android:layout_width="match_parent"
+                    android:text="@string/student_more"
+                    android:visibility="gone" />
 
-            <TextView
-                android:id="@+id/rankText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:visibility="gone" />
-
-            <TextView
-                android:id="@+id/accountError"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:textColor="#B00020"
-                android:visibility="gone" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
-                android:text="@string/student_history"
-                android:textStyle="bold" />
-
-            <ListView
-                android:id="@+id/historyList"
-                android:layout_width="match_parent"
-                android:layout_height="360dp"
-                android:layout_marginTop="8dp" />
-
-            <TextView
-                android:id="@+id/emptyHistory"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="@string/student_empty"
-                android:visibility="gone" />
-
-            <Button
-                android:id="@+id/moreButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="@string/student_more"
-                android:visibility="gone" />
-
-            <Button
-                android:id="@+id/logoutButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="@string/student_logout" />
+                <co.ecostation.app.ui.EcoButton
+                    android:id="@+id/logoutButton"
+                    style="@style/Eco.Button.Ghost"
+                    android:layout_width="match_parent"
+                    android:layout_marginTop="@dimen/space_1"
+                    android:text="@string/student_logout" />
+            </LinearLayout>
         </LinearLayout>
-    </LinearLayout>
-</ScrollView>
+    </FrameLayout>
+
+    <include layout="@layout/view_bottom_nav" />
+</LinearLayout>
