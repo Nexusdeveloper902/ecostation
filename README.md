@@ -15,7 +15,8 @@ docs/       Especificación, planes de implementación y política de privacidad
 
 ## Inicio rápido (web)
 
-Requisitos: PHP 8.3+ con `pdo_sqlite`, Composer, Node no es necesario.
+Requisitos: PHP 8.5+ con `pdo_sqlite` (la versión estable más reciente),
+Composer. Node no es necesario.
 
 ```bash
 cd web

@@ -14,7 +14,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
+          # Latest stable PHP (composer.lock needs >= 8.4.1 as a minimum).
+          php-version: '8.5'
           extensions: pdo_sqlite
       - run: composer install --no-interaction --prefer-dist
       - run: composer audit --locked --no-interaction

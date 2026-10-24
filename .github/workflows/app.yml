@@ -16,5 +16,22 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
-      - run: ./gradlew :app:testDebugUnitTest
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Prepare the preinstalled Android SDK
+        # android-actions/setup-android@v3 currently fails on the removed
+        # `sdkmanager tools` package. The runner already ships the SDK; only
+        # accept licenses and make sure API 35 + build tools 34 are present.
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          if [ -z "$SDK_ROOT" ]; then
+            echo "ANDROID_HOME/ANDROID_SDK_ROOT is not set" >&2
+            exit 1
+          fi
+          SDKMANAGER="$(find "$SDK_ROOT" -path '*/cmdline-tools/*/bin/sdkmanager' -type f | head -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found in the runner image" >&2
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;34.0.0" >/dev/null
+      - run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug

@@ -74,8 +74,16 @@ public:
         EcoStationCandidate candidates[kMaxConsidered];
         int count = 0;
         for (int i = 0; i < n && count < kMaxConsidered; ++i) {
+            // Arduino-ESP32 3.x renamed MDNSResponder::IP(i) to address(i).
+            // Keep both cores buildable: the station ships on whatever the
+            // installed platform provides.
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
+            candidates[count].ip =
+                std::string(MDNS.address(i).toString().c_str());
+#else
             candidates[count].ip =
                 std::string(MDNS.IP(i).toString().c_str());
+#endif
             candidates[count].port = MDNS.port(i);
             candidates[count].protocolTxt =
                 MDNS.hasTxt(i, "protocol")

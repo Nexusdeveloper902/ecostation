@@ -1,6 +1,6 @@
 # EcoStation web
 
-Aplicación Laravel 13 (PHP 8.3+, SQLite, Sanctum) de EcoStation. Idioma `es`, zona horaria `America/Bogota`.
+Aplicación Laravel 13 (PHP 8.5+, SQLite, Sanctum) de EcoStation. Idioma `es`, zona horaria `America/Bogota`.
 
 ```bash
 ./run setup   # dependencias, .env, base SQLite, migraciones y datos de demostración
