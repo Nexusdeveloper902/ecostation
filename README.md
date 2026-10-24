@@ -152,7 +152,7 @@ autoalojan; no hay CDN.
 | Web | `cd web && ./run ci` | 382 pruebas, 1.758 aserciones, Pint limpio |
 | App | `cd app && ./gradlew :app:testDebugUnitTest` | 110 pruebas (109 + 1 e2e opt-in) |
 | Firmware | `cd firmware && pio test -e native` | 160 pruebas nativas |
-| Firmware e2e | `WEB=../web ./firmware/scripts/e2e_web.sh` | 13/13 casos, `RESULTADO: E2E OK` |
+| Firmware e2e | `./firmware/scripts/e2e_web.sh` | 13/13 casos, `RESULTADO: E2E OK` |
 
 La app no incluye pruebas instrumentadas ejecutadas en CI (requieren un
 dispositivo con NFC); el APK y las pruebas JVM sí se compilan y pasan. La
