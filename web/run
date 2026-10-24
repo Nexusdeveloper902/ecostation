@@ -3,6 +3,19 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# PHP2Shell (CVE-2026-109618 / CVE-2026-109619): every runtime through
+# 8.5.11 allows unauthenticated RCE. Patched: 8.5.12+. Refuse to operate.
+if ! command -v php >/dev/null 2>&1; then
+    echo "PHP no está instalado." >&2
+    exit 1
+fi
+
+if ! php -r 'exit(PHP_VERSION_ID >= 80512 ? 0 : 1);' >/dev/null 2>&1; then
+    echo "EcoStation requiere PHP 8.5.12 o superior (PHP2Shell, CVE-2026-109618/109619)." >&2
+    echo "Versión actual: $(php -r 'echo PHP_VERSION;' 2>/dev/null || echo desconocida)" >&2
+    exit 1
+fi
+
 usage() {
     cat >&2 <<'USO'
 Uso: ./run <comando>

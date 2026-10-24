@@ -6,7 +6,7 @@ Fecha: 2026-10-23. Rama de integración: `main`.
 
 | Pista | Plan | Estado | Verificación |
 |---|---|---|---|
-| Web (`web/`) | Tasks 1–20 | Completa, incluida la piel visual | `./run ci`: 382 pruebas, 1.758 aserciones, Pint limpio |
+| Web (`web/`) | Tasks 1–20 | Completa, incluida la piel visual | `./run ci`: 383 pruebas, 1.760 aserciones, Pint limpio |
 | App (`app/`) | Tasks 1–9 | Completa, incluida la piel Boti | 110 pruebas JVM (109 + 1 e2e opt-in), `assembleDebug`, `assembleDebugAndroidTest`, `lintDebug` |
 | Firmware (`firmware/`) | Tasks 1–10 | Completa | 160 pruebas nativas, `pio run -e esp32cam` SUCCESS, e2e 13/13 |
 | Diseño (`design/`) | Penpot | Concepto B · Boti aplicado | `DESIGN-SPEC.md` + exportes PNG |
@@ -56,6 +56,15 @@ cd web && php artisan db:seed --class=DemoActivitySeeder
 
 Es opcional, determinista e idempotente. No crea fotos. Las cuentas demo están
 en el `README.md`; todas usan `password` en `local`/`testing`.
+
+## Seguridad del runtime
+
+- **PHP2Shell (CVE-2026-109618 / CVE-2026-109619):** RCE no autenticado en
+  PHP hasta 8.5.11. El proyecto exige **8.5.12+** en `composer.json`,
+  `config.platform`, CI, `./run` y `bootstrap/app.php`. Una runtime vulnerable
+  se niega a arrancar (`BootTest::the_runtime_is_patched_for_php2shell`).
+  No basta con actualizar `composer.lock`: hay que actualizar PHP en el
+  servidor y reiniciar el proceso.
 
 ## Pendiente / límites conocidos
 

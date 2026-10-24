@@ -15,8 +15,9 @@ docs/       Especificación, planes de implementación y política de privacidad
 
 ## Inicio rápido (web)
 
-Requisitos: PHP 8.5+ con `pdo_sqlite` (la versión estable más reciente),
-Composer. Node no es necesario.
+Requisitos: **PHP 8.5.12+** con `pdo_sqlite`, Composer. Node no es necesario.
+(8.5.12 es el primer parche de PHP2Shell; `bootstrap/app.php` y `./run` se
+niegan a arrancar en versiones vulnerables.)
 
 ```bash
 cd web
@@ -125,6 +126,11 @@ autoalojan; no hay CDN.
 
 ## Seguridad y límites conocidos
 
+- **PHP2Shell (CVE-2026-109618 / CVE-2026-109619, 21 oct 2026).** RCE no
+  autenticado en PHP 5.4–8.5.11. Este proyecto exige **8.5.12+** en
+  `composer.json`, CI, `./run` y `bootstrap/app.php`; una versión vulnerable
+  falla cerrada con un mensaje claro. Actualiza el runtime del servidor, no
+  solo el lockfile.
 - El despliegue v1 es **HTTP en la LAN escolar**. mDNS y el sondeo de subred
   sirven para descubrir, no para autenticar criptográficamente al servidor; la
   app fija la dirección tras el primer inicio de sesión y exige el manifiesto
@@ -150,7 +156,7 @@ autoalojan; no hay CDN.
 
 | Componente | Comando | Último resultado |
 |---|---|---|
-| Web | `cd web && ./run ci` | 382 pruebas, 1.758 aserciones, Pint limpio |
+| Web | `cd web && ./run ci` | 383 pruebas, 1.760 aserciones, Pint limpio |
 | App | `cd app && ./gradlew :app:testDebugUnitTest` | 110 pruebas (109 + 1 e2e opt-in) |
 | Firmware | `cd firmware && pio test -e native` | 160 pruebas nativas |
 | Firmware e2e | `./firmware/scripts/e2e_web.sh` | 13/13 casos, `RESULTADO: E2E OK` |

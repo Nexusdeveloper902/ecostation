@@ -14,9 +14,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          # Latest stable PHP (composer.lock needs >= 8.4.1 as a minimum).
+          # Latest stable PHP. PHP2Shell (CVE-2026-109618/109619) requires
+          # >= 8.5.12; the next step fails closed on older runtimes.
           php-version: '8.5'
           extensions: pdo_sqlite
+      - name: Verify patched PHP (PHP2Shell)
+        run: |
+          php -v
+          php -r 'exit(PHP_VERSION_ID >= 80512 ? 0 : 1);'
       - run: composer install --no-interaction --prefer-dist
       - run: composer audit --locked --no-interaction
       - run: cp .env.example .env

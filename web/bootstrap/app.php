@@ -1,5 +1,20 @@
 <?php
 
+// PHP2Shell (CVE-2026-109618 / CVE-2026-109619): every PHP runtime from 5.4
+// through 8.5.11 allows unauthenticated RCE. Fail closed instead of running
+// a vulnerable interpreter. Patched: 8.5.12, 8.4.27, 8.3.36, 8.2.35.
+if (PHP_VERSION_ID < 80512) {
+    $message = 'EcoStation requiere PHP 8.5.12 o superior (PHP2Shell, CVE-2026-109618/109619).';
+    if (PHP_SAPI === 'cli') {
+        fwrite(STDERR, $message.PHP_EOL);
+    } else {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo $message;
+    }
+    exit(1);
+}
+
 use App\Http\Middleware\EnsurePasswordChanged;
 use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\ResolveReaderToken;
