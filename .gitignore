@@ -1,8 +1,17 @@
 .superpowers/
 .worktrees/
+.playwright-mcp/
+qa/
 web/.env
 web/database/*.sqlite
 web/storage/app/private/*
+web/bootstrap/cache/*
+web/storage/framework/cache/*
+web/storage/framework/sessions/*
+web/storage/framework/views/*
+web/storage/logs/*
+__pycache__/
+*.pyc
 **/secrets*.h
 *.jks
 *.keystore
