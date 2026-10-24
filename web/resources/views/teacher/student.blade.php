@@ -50,7 +50,7 @@
         <div class="card__header">
             <div>
                 <h2 class="card__title" id="depositos-title">Depósitos de los últimos 30 días</h2>
-                <p class="card__subtitle">Foto tomada por la estación, clasificación y confianza del modelo.</p>
+                <p class="card__subtitle">Foto tomada por la estación y su clasificación.</p>
             </div>
             <a class="card__link" href="{{ route('teacher.export') }}">Exportar reporte</a>
         </div>
@@ -120,11 +120,15 @@
         </div>
     </section>
 
-    <p class="small">
-        <a href="{{ route('teacher.student.export.csv', $student) }}">Descargar CSV del estudiante</a>
-        ·
-        <a href="{{ route('teacher.student.export.pdf', $student) }}">Descargar PDF del estudiante</a>
-        ·
-        <a href="{{ route('teacher.dashboard') }}">Volver al resumen</a>
-    </p>
+    <div class="toolbar toolbar--start">
+        <a class="btn btn--outline btn--sm" href="{{ route('teacher.student.export.csv', $student) }}">
+            <x-icon name="download" />
+            CSV del estudiante
+        </a>
+        <a class="btn btn--outline btn--sm" href="{{ route('teacher.student.export.pdf', $student) }}">
+            <x-icon name="download" />
+            PDF del estudiante
+        </a>
+        <a class="btn btn--ghost btn--sm" href="{{ route('teacher.dashboard') }}">Volver al resumen</a>
+    </div>
 @endsection

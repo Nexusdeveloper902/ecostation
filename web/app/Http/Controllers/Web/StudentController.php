@@ -69,12 +69,14 @@ class StudentController extends Controller
             ->count();
 
         $byMaterial = $this->materialMix($year);
+        $standing = $this->leaderboard->rankInClass($student);
 
         return view('student.dashboard', [
             'student' => $student,
             'balance' => $this->points->balance($student),
-            'rank' => $this->leaderboard->rankOf($student)['rank'],
+            'rank' => $standing['rank'],
             'recent' => $recent,
+            'rankStudents' => $standing['students'],
             'studentsTotal' => Student::count(),
             'yearItems' => $yearItems,
             'yearPoints' => $yearPoints,
@@ -135,9 +137,13 @@ class StudentController extends Controller
     public function leaderboard(Request $request): View
     {
         $student = $this->studentFor($request);
-        $top = $this->leaderboard->top(10);
+        $scope = $request->query('scope') === 'school' ? 'school' : 'class';
+        $classId = $scope === 'class' ? $student->class_id : null;
+        $top = $this->leaderboard->top(10, $classId);
         $classes = $this->leaderboard->classes();
-        $me = $this->leaderboard->rankOf($student);
+        $me = $classId !== null
+            ? $this->leaderboard->rankInClass($student)
+            : $this->leaderboard->rankOf($student) + ['students' => Student::count()];
 
         $studentIds = array_column($top, 'student_id');
         $studentIds[] = (int) $student->id;
@@ -162,6 +168,7 @@ class StudentController extends Controller
             'top' => $top,
             'classes' => $classes,
             'me' => $me,
+            'scope' => $scope,
             'studentDeposits' => $studentDeposits,
             'classDeposits' => $classDeposits,
         ]);

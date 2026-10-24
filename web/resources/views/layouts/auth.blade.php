@@ -15,7 +15,7 @@
             <div class="auth__center">
                 <img class="auth__boti" src="{{ asset('img/boti.svg') }}" alt="" width="120" height="120" aria-hidden="true">
 
-                <p class="display auth__display">Recicla, toca<br>y suma puntos.</p>
+                <p class="display auth__display">Recicla, toca<br> y suma puntos.</p>
                 <p class="auth__copy">
                     Tu carné o tu teléfono es tu llave: tócalo en la estación, deposita la botella y sigue tu camino. Los puntos llegan solos.
                 </p>

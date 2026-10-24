@@ -42,8 +42,8 @@
 
     <div class="toolbar">
         <div class="station-stats" aria-label="Resumen de personal">
-            <span class="stat-pill"><strong>{{ $staff->count() }}</strong> cuentas</span>
-            <span class="stat-pill"><strong>{{ $teacherCount }}</strong> docentes</span>
+            <span class="stat-pill"><strong>{{ $staff->count() }}</strong> {{ $staff->count() === 1 ? 'cuenta' : 'cuentas' }}</span>
+            <span class="stat-pill"><strong>{{ $teacherCount }}</strong> {{ $teacherCount === 1 ? 'docente' : 'docentes' }}</span>
         </div>
 
         <button class="btn btn--primary" type="button" data-modal-open="modal-staff">

@@ -2,7 +2,7 @@
 
 @section('title', 'Estudiantes y cursos')
 @section('heading', 'Estudiantes y cursos')
-@section('subtitle', number_format($totalStudents, 0, ',', '.').' estudiantes en '.number_format($totalClasses, 0, ',', '.').' cursos')
+@section('subtitle', number_format($totalStudents, 0, ',', '.').' '.($totalStudents === 1 ? 'estudiante' : 'estudiantes').' en '.number_format($totalClasses, 0, ',', '.').' '.($totalClasses === 1 ? 'curso' : 'cursos'))
 
 @php
     $filterQuery = array_filter([
@@ -111,6 +111,7 @@
                 <x-select
                     name="credential"
                     label="Credencial"
+                    :hide-label="true"
                     :options="[
                         'all' => 'Todas',
                         'card' => 'Tarjeta',

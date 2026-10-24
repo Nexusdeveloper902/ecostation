@@ -44,7 +44,7 @@
 
     <div class="toolbar">
         <div class="station-stats" aria-label="Resumen de estaciones">
-            <span class="stat-pill"><strong>{{ count($stations) }}</strong> estaciones</span>
+            <span class="stat-pill"><strong>{{ count($stations) }}</strong> {{ count($stations) === 1 ? 'estación' : 'estaciones' }}</span>
             <span class="stat-pill"><strong>{{ $onlineCount }}</strong> en línea</span>
             <span class="stat-pill"><strong>{{ number_format($todayTotal, 0, ',', '.') }}</strong> depósitos hoy</span>
         </div>

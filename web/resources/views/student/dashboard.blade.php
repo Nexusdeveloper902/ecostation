@@ -34,7 +34,7 @@
 
                 <span class="hero__rank">
                     Puesto {{ number_format($rank, 0, ',', '.') }} de
-                    {{ number_format($studentsTotal, 0, ',', '.') }} en {{ $classLine }}
+                    {{ number_format($rankStudents, 0, ',', '.') }} en {{ $classLine }}
                 </span>
             </div>
 

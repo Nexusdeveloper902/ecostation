@@ -7,6 +7,7 @@
     'help' => null,
     'id' => null,
     'required' => false,
+    'hideLabel' => false,
 ])
 
 @php
@@ -17,7 +18,7 @@
 @endphp
 
 <div {{ $attributes->class(['field', 'field--error' => $hasError]) }}>
-    <label class="field__label" for="{{ $id }}">{{ $label }}</label>
+    <label class="field__label {{ $hideLabel ? 'sr-only' : '' }}" for="{{ $id }}">{{ $label }}</label>
 
     <div class="field__control">
         @if ($icon)

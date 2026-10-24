@@ -1885,12 +1885,39 @@ a.chip:hover {
     color: var(--eco-primary-strong);
 }
 
+.filter-form {
+    display: inline-flex;
+    margin: 0;
+}
+
+.filter-pill select {
+    appearance: none;
+    border: 0;
+    padding: 0 22px 0 0;
+    background: transparent
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%234A6468' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+        no-repeat right center;
+    color: inherit;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.filter-pill select:focus-visible {
+    outline: 2px solid var(--eco-primary);
+    outline-offset: 2px;
+}
+
 .toolbar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: var(--eco-space-3);
+}
+
+.toolbar--start {
+    justify-content: flex-start;
 }
 
 .toolbar__group {
@@ -2487,6 +2514,12 @@ a.chip:hover {
     .steps {
         grid-template-columns: minmax(0, 1fr);
         gap: var(--eco-space-4);
+    }
+}
+
+@media (max-width: 700px) {
+    .steps {
+        display: none;
     }
 }
 
@@ -3277,6 +3310,7 @@ a.chip:hover {
 
 .fingerprint {
     display: inline-block;
+    white-space: nowrap;
     padding: 4px 9px;
     border-radius: var(--eco-radius-xs);
     background: var(--eco-mint);

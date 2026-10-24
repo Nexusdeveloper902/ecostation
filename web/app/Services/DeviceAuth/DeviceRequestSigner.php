@@ -69,20 +69,27 @@ class DeviceRequestSigner
     }
 
     /**
-     * Fingerprint => reader map, cached because verification used to load
+     * Fingerprint => reader id map, cached because verification used to load
      * every reader row on every request. Reader model events invalidate it
      * on create/rotate/delete.
+     *
+     * Only scalars go into the cache: `config('cache.serializable_classes')`
+     * is `false`, so an Eloquent model stored in the database cache comes
+     * back as `__PHP_Incomplete_Class` on the next request. The reader row is
+     * loaded by id after the map hit (one indexed query).
      */
     private function readerForFingerprint(string $kid): ?Reader
     {
-        /** @var array<string, Reader> $map */
+        /** @var array<string, int> $map */
         $map = Cache::rememberForever(Reader::AUTH_MAP_CACHE_KEY, function (): array {
-            return Reader::query()->get()->mapWithKeys(
-                fn (Reader $reader): array => [self::fingerprint((string) $reader->api_key) => $reader],
+            return Reader::query()->get(['id', 'api_key'])->mapWithKeys(
+                fn (Reader $reader): array => [self::fingerprint((string) $reader->api_key) => (int) $reader->id],
             )->all();
         });
 
-        return $map[$kid] ?? null;
+        $id = $map[$kid] ?? null;
+
+        return $id === null ? null : Reader::find($id);
     }
 
     /** Sign a request (legitimate devices, bench curl, tests). */

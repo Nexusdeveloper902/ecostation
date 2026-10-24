@@ -2,7 +2,7 @@
 
 @section('title', 'Cursos')
 @section('heading', 'Cursos')
-@section('subtitle', $classes->count().' cursos · asigna docentes y revisa sus estudiantes')
+@section('subtitle', $classes->count().' '.($classes->count() === 1 ? 'curso' : 'cursos').' · asigna docentes y revisa sus estudiantes')
 
 @section('actions')
     <button class="btn btn--primary btn--sm" type="button" data-modal-open="modal-class">

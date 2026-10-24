@@ -906,6 +906,10 @@
         width: min(260px, calc(100vw - 32px));
     }
 
+    .save-bar {
+        bottom: calc(var(--eco-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 12px);
+    }
+
     .bottom-nav {
         position: fixed;
         right: 0;

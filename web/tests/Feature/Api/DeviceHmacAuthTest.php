@@ -7,6 +7,7 @@ use App\Models\PresenceEvent;
 use App\Services\DeviceAuth\DeviceRequestSigner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -381,5 +382,19 @@ class DeviceHmacAuthTest extends TestCase
                 'HTTP_AUTHORIZATION' => DeviceRequestSigner::authorizationHeader($reader, 'POST', '/api/v1/recycling/capture', $canonical, $nonce),
             ]
         )->assertOk()->assertJson(['status' => 'ok', 'state' => 'awaiting_card']);
+    }
+
+    #[Test]
+    public function the_hmac_reader_map_survives_the_database_cache_without_incomplete_classes(): void
+    {
+        // phpunit.xml uses the array cache, which never serializes models.
+        // The database cache does, and `cache.serializable_classes` is false:
+        // an Eloquent model cached here comes back as __PHP_Incomplete_Class.
+        // Two signed requests prove the cached map is read on the second one.
+        config(['cache.default' => 'database']);
+        Cache::flush();
+
+        $this->signedTap('DEMO-1')->assertOk();
+        $this->signedTap('DEMO-2')->assertOk();
     }
 }

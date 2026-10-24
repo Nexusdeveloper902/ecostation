@@ -24,9 +24,18 @@ class LeaderboardService
      *
      * @return array<int, array{rank: int, student_id: int, student_name: string, class_name: string|null, points: int}>
      */
-    public function top(int $limit = 10): array
+    /**
+     * @param  int|null  $classId  when set, only students of that class
+     */
+    public function top(int $limit = 10, ?int $classId = null): array
     {
-        return $this->stampRanks($this->scored()->limit($limit)->get());
+        $query = $this->scored();
+
+        if ($classId !== null) {
+            $query->where('students.class_id', $classId);
+        }
+
+        return $this->stampRanks($query->limit($limit)->get());
     }
 
     /**
@@ -59,6 +68,43 @@ class LeaderboardService
         $better = (clone $totals)->where('points', '>', $points)->count();
 
         return ['rank' => $better + 1, 'points' => $points];
+    }
+
+    /**
+     * A student's standing inside their own class (the student leaderboard's
+     * default scope), plus the class size so the UI can say "3 de 32".
+     * Students without a class fall back to the school-wide standing.
+     *
+     * @return array{rank: int, points: int, students: int}
+     */
+    public function rankInClass(Student $student): array
+    {
+        $classId = $student->class_id;
+
+        if ($classId === null) {
+            $standing = $this->rankOf($student);
+
+            return $standing + ['students' => Student::count()];
+        }
+
+        $totals = DB::query()->fromSub(
+            DB::table('students')
+                ->where('students.class_id', $classId)
+                ->leftJoin('points_ledger', 'points_ledger.student_id', '=', 'students.id')
+                ->groupBy('students.id')
+                ->select([
+                    'students.id as student_id',
+                    DB::raw('COALESCE(SUM(points_ledger.delta), 0) as points'),
+                ]),
+            'scored',
+        );
+
+        $own = (clone $totals)->where('student_id', (int) $student->id)->value('points');
+        $points = $own !== null ? (int) $own : 0;
+        $better = (clone $totals)->where('points', '>', $points)->count();
+        $students = (clone $totals)->count();
+
+        return ['rank' => $better + 1, 'points' => $points, 'students' => $students];
     }
 
     /**

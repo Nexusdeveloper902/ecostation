@@ -86,12 +86,22 @@ class StudentPagesTest extends TestCase
     #[Test]
     public function the_leaderboard_shows_both_classes_and_my_standing(): void
     {
+        // The board defaults to the student's own class (the Penpot design).
         $this->actingAs($this->accountOf('Maria González'))
             ->get('/student/leaderboard')
             ->assertOk()
             ->assertViewHas('classes', fn ($classes) => count($classes) === 2)
+            ->assertViewHas('top', fn ($top) => count($top) === 3)
+            ->assertViewHas('scope', 'class')
+            ->assertViewHas('me', fn ($me) => $me['points'] === 0)
+            ->assertViewHas('me', fn ($me) => $me['students'] === 3);
+
+        $this->actingAs($this->accountOf('Maria González'))
+            ->get('/student/leaderboard?scope=school')
+            ->assertOk()
             ->assertViewHas('top', fn ($top) => count($top) === 5)
-            ->assertViewHas('me', fn ($me) => $me['points'] === 0);
+            ->assertViewHas('scope', 'school')
+            ->assertViewHas('me', fn ($me) => $me['students'] === 5);
     }
 
     #[Test]

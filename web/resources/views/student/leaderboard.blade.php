@@ -7,6 +7,7 @@
 @php
     $tab = request()->query('tab') === 'cursos' ? 'cursos' : 'estudiantes';
     $studentClass = $student->schoolClass?->name ?? 'Sin curso';
+    $scope = $scope ?? 'class';
     $rest = array_values(array_filter($top, fn (array $entry) => $entry['rank'] > 3));
     $showMe = (int) $me['rank'] > 10;
 @endphp
@@ -26,10 +27,16 @@
     </span>
 
     @if ($tab === 'estudiantes')
-        <span class="filter-pill">
-            <x-icon name="users" />
-            Mi curso: {{ $studentClass }}
-        </span>
+        <form method="GET" action="{{ route('student.leaderboard') }}" class="filter-form">
+            <span class="filter-pill">
+                <x-icon name="users" />
+                <label class="sr-only" for="ranking-scope">Curso del ranking</label>
+                <select id="ranking-scope" name="scope" onchange="this.form.submit()">
+                    <option value="class" @selected($scope === 'class')>Mi curso: {{ $studentClass }}</option>
+                    <option value="school" @selected($scope === 'school')>Todo el colegio</option>
+                </select>
+            </span>
+        </form>
     @endif
 @endsection
 
@@ -40,7 +47,7 @@
             <span class="rank-summary__value">#{{ number_format($me['rank'], 0, ',', '.') }}</span>
             <span class="muted">·</span>
             <span class="mono">{{ number_format($me['points'], 0, ',', '.') }} pts</span>
-            <span class="muted">en {{ $studentClass }}</span>
+            <span class="muted">en {{ $scope === 'school' ? 'el colegio' : $studentClass }}</span>
         </div>
 
         @if (count($top) >= 3)
@@ -73,6 +80,7 @@
             </div>
         @endif
 
+        @if (count($rest) > 0 || $showMe)
         <section class="card" aria-label="Tabla de posiciones">
             <x-table-wrapper label="Ranking de estudiantes">
                 <table class="data-table data-table--roomy data-table--fit">
@@ -132,9 +140,11 @@
                 </table>
             </x-table-wrapper>
         </section>
+        @endif
 
         <p class="small muted">
-            Puntos totales del año escolar {{ now()->year }} · tu curso ({{ $studentClass }}).
+            Puntos totales del año escolar {{ now()->year }} ·
+            {{ $scope === 'school' ? 'todo el colegio' : 'tu curso ('.$studentClass.')' }}.
             Los empates comparten el mismo puesto.
         </p>
     @else

@@ -370,8 +370,25 @@ class RealtimeServeCommand extends Command
             fn (array $row): bool => $this->clientSeesTap($client, $row),
         ));
 
-        $recycling = \array_values(\array_filter(
+        // Each deposit writes two updates (validated + points_awarded). Keep
+        // the generic recent window AND pair every hello event with its exact
+        // updates, so a historical tap always carries its material/points even
+        // when its two rows scrolled out of the window. Dedupe by update id and
+        // keep chronological order. The hello size guard below still caps the
+        // final payload.
+        $history = array_merge(
             $this->recycling->recent($limit),
+            $this->recycling->forEventIds(array_column($events, 'id')),
+        );
+
+        $history = collect($history)
+            ->unique('id')
+            ->sortBy('id')
+            ->values()
+            ->all();
+
+        $recycling = \array_values(\array_filter(
+            $history,
             fn (array $row): bool => $this->clientSeesRecycling($client, (string) $row['type'], $row['payload']),
         ));
 

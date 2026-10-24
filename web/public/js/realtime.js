@@ -83,6 +83,30 @@
         return String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
     }
 
+    /** Today shows HH:MM; older history shows DD/MM · HH:MM. */
+    function timeLabel(time, date) {
+        if (!date) {
+            return time || nowTime();
+        }
+
+        var now = new Date();
+        var today = now.getFullYear() + "-"
+            + String(now.getMonth() + 1).padStart(2, "0") + "-"
+            + String(now.getDate()).padStart(2, "0");
+
+        if (date === today) {
+            return time || nowTime();
+        }
+
+        var parts = String(date).split("-");
+
+        if (parts.length !== 3) {
+            return time || nowTime();
+        }
+
+        return parts[2] + "/" + parts[1] + " · " + (time || "");
+    }
+
     function formatClock(seconds) {
         var safe = Math.max(0, seconds);
 
@@ -197,7 +221,7 @@
             row.setAttribute("data-class-id", String(data.class_id));
         }
 
-        row.appendChild(node("span", "live-row__time", data.time || nowTime()));
+        row.appendChild(node("span", "live-row__time", timeLabel(data.time, data.date)));
 
         var student = node("div", "live-row__student");
         var avatar = node("span", "avatar avatar--sm", initials(data.student_name));
@@ -228,8 +252,8 @@
             return;
         }
 
-        if (data.time) {
-            setText(row, ".live-row__time", data.time);
+        if (data.time || data.date) {
+            setText(row, ".live-row__time", timeLabel(data.time, data.date));
         }
 
         if (data.student_name) {
@@ -450,7 +474,10 @@
         });
 
         var events = (hello.events || []).slice().sort(function (a, b) {
-            return Number(b.id) - Number(a.id);
+            var left = String(b.date || "") + String(b.time || "");
+            var right = String(a.date || "") + String(a.time || "");
+
+            return left.localeCompare(right);
         });
 
         rowsById = {};
@@ -469,6 +496,7 @@
                 class_name: event.class_name,
                 reader_label: event.reader_label,
                 time: event.time,
+                date: event.date,
                 material: extra.material || undefined,
                 points: extra.points === undefined ? undefined : extra.points
             });
@@ -503,6 +531,7 @@
         deadline: null,
         expiredPolled: false,
         polling: false,
+        sawPending: false,
         dismissedPairedAt: null,
         activeFilter: "unlinked"
     } : null;
@@ -613,6 +642,7 @@
         pairing.lastPayload = payload;
 
         if (payload.pending) {
+            pairing.sawPending = true;
             pairing.deadline = payload.pending.expires_at ? Date.parse(payload.pending.expires_at) : null;
             pairing.expiredPolled = false;
             showDeskPanel(pairing.pending);
@@ -634,9 +664,20 @@
             showDeskPanel(pairing.success);
             markStudentRows("linked", last.student_id);
 
+            // The pairing changed the credential list and the recent table;
+            // refresh once so both reflect the new row. The reload keeps the
+            // success panel (last_pairing is still inside the 60 s window).
+            if (pairing.sawPending) {
+                pairing.sawPending = false;
+                window.setTimeout(function () {
+                    window.location.reload();
+                }, 1200);
+            }
+
             return;
         }
 
+        pairing.sawPending = false;
         showDeskPanel(pairing.idle);
         markStudentRows("none", null);
     }
