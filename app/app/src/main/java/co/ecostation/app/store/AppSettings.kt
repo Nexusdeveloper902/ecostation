@@ -92,6 +92,15 @@ class AppSettings(context: Context) {
     /** True while a hand-off window is persisted (phase still needs the clock). */
     val linkPending: Boolean get() = linkFlags.pending
 
+    /**
+     * This window belongs to a phone that had NO key: its provisional key was
+     * imported so CHALLENGE can succeed before ENROLL. If the window is
+     * cancelled/expires without adoption, that key is removed again.
+     */
+    var linkFirst: Boolean
+        get() = plain.getBoolean(KEY_LINK_FIRST, false)
+        set(value) = plain.edit().putBoolean(KEY_LINK_FIRST, value).apply()
+
     // ----------------------------------------------------------- sealed prefs
 
     var speakerEmail: String?
@@ -267,6 +276,7 @@ class AppSettings(context: Context) {
         const val KEY_LINK_PENDING_UNTIL = "link_pending_until"
         const val KEY_LINK_SENT = "link_sent"
         const val KEY_LINK_SENT_AT = "link_sent_at"
+        const val KEY_LINK_FIRST = "link_first"
         const val KEY_SPEAKER_EMAIL = "speaker_email"
         const val KEY_SPEAKER_PASSWORD = "speaker_password"
         const val KEY_STUDENT_TOKEN = "student_token"

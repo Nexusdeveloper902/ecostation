@@ -125,10 +125,30 @@ object CredentialRuntime {
         if (!keys.isAvailable()) return false
         val raw = ByteArray(CredentialKeyStore.KEY_BYTES).also { SecureRandom().nextBytes(it) }
         try {
+            // A NEVER-LINKED phone must answer CHALLENGE before the reader
+            // sends ENROLL, so the first link imports a provisional key now.
+            // A re-link keeps the old key until ENROLL adopts the new one.
+            if (!keys.hasKey(credentialId) && !keys.adopt(credentialId, raw)) {
+                return false
+            }
             enrollment.open(credentialId, raw, clockMs())
         } finally {
             raw.fill(0)
         }
         return true
+    }
+
+    /**
+     * Close the window and, for a first link that never reached ENROLL, remove
+     * the provisional key so the phone returns to SIN VINCULAR instead of
+     * showing LISTA with a key the backend never received.
+     */
+    fun abortEnrollment(
+        credentialId: String = ApduProtocol.CRED_ID,
+        deleteKey: Boolean,
+        keys: CredentialKeyStore = this.keys,
+    ) {
+        enrollment.close()
+        if (deleteKey) keys.delete(credentialId)
     }
 }

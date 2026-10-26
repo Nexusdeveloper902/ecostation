@@ -224,8 +224,18 @@ class MainActivity : Activity() {
         linkCancel.setOnClickListener {
             // Cancel only closes the window. It must NEVER discard an
             // unconfirmed adoption: the backend may already hold the new key.
+            val firstLink = settings.linkFirst
             CredentialRuntime.enrollment.close()
             settings.updateLinkFlags(LinkState::afterCancel)
+            if (firstLink) {
+                // A first link imported a provisional key so CHALLENGE could
+                // run before ENROLL. Nothing adopted → remove it and return to
+                // SIN VINCULAR; adopted → keep the key and clear the marker.
+                if (!settings.linkFlags.sent) {
+                    CredentialRuntime.abortEnrollment(deleteKey = true)
+                }
+                settings.linkFirst = false
+            }
             handler.removeCallbacks(tick)
             refreshKeyPresence()
             postRender()
@@ -344,6 +354,13 @@ class MainActivity : Activity() {
             )
         ) {
             settings.updateLinkFlags(LinkState::closeWindow)
+            if (settings.linkFirst) {
+                if (!settings.linkFlags.sent) {
+                    CredentialRuntime.abortEnrollment(deleteKey = true)
+                }
+                settings.linkFirst = false
+                refreshKeyPresence()
+            }
             handler.removeCallbacks(tick)
         }
     }
@@ -389,7 +406,7 @@ class MainActivity : Activity() {
         section = value
         cardSection.visibility = if (section == SECTION_CARD) View.VISIBLE else View.GONE
         speakerSection.visibility = if (section == SECTION_SPEAKER) View.VISIBLE else View.GONE
-        findViewById<TextView>(R.id.topBarTitle).setText(
+        findViewById<TextView>(R.id.topBarTitle)?.setText(
             if (section == SECTION_SPEAKER) R.string.speaker_title else R.string.nav_card,
         )
         BottomNav.bind(this, activeTab()) { tab -> onTab(tab) }
@@ -409,6 +426,7 @@ class MainActivity : Activity() {
             .setTitle(R.string.link_title)
             .setMessage(R.string.link_body)
             .setPositiveButton(R.string.link_start) { _, _ ->
+                val hadKey = CredentialRuntime.keys.hasKey(ApduProtocol.CRED_ID)
                 if (!CredentialRuntime.beginEnrollment()) {
                     // The Keystore validation failed before any window opened.
                     settings.updateLinkFlags(LinkState::closeWindow)
@@ -417,6 +435,10 @@ class MainActivity : Activity() {
                         .setPositiveButton(android.R.string.ok, null)
                         .show()
                 } else {
+                    // A phone with no key got a provisional one inside
+                    // beginEnrollment; remember to remove it if the window is
+                    // cancelled or expires without ENROLL.
+                    settings.linkFirst = !hadKey
                     // An explicit re-link supersedes any unconfirmed adoption.
                     settings.updateLinkFlags {
                         LinkState.beginWindow(

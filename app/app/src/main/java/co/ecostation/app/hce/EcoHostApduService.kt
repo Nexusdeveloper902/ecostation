@@ -57,6 +57,16 @@ class EcoHostApduService : HostApduService() {
             onAdoptFailed = {
                 // The store refused the import: roll the optimistic flag back.
                 settings.updateLinkFlags(LinkState::adoptionFailed)
+                if (settings.linkFirst) {
+                    // A first link imported a provisional key. The reader did
+                    // not receive it, so remove it and return to SIN VINCULAR.
+                    CredentialRuntime.keys.delete(ApduProtocol.CRED_ID)
+                    settings.linkFirst = false
+                }
+            },
+            onAdopted = {
+                // ENROLL delivered the key: it is no longer provisional.
+                settings.linkFirst = false
             },
         )
     }

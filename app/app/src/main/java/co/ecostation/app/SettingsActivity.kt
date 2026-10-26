@@ -32,7 +32,7 @@ import java.net.URL
 class SettingsActivity : Activity() {
 
     private lateinit var settings: AppSettings
-    private lateinit var discovery: BackendDiscovery
+    private val discovery by lazy { BackendDiscovery(this) }
     private lateinit var address: EditText
     private lateinit var autoDiscover: Switch
     private lateinit var email: EditText
@@ -45,7 +45,6 @@ class SettingsActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
         settings = AppSettings(this)
-        discovery = BackendDiscovery(this)
 
         address = findViewById(R.id.serverAddress)
         autoDiscover = findViewById(R.id.autoDiscover)
@@ -87,7 +86,7 @@ class SettingsActivity : Activity() {
         testButton.setOnClickListener { testConnection() }
         findViewById<Button>(R.id.saveSettings).setOnClickListener { save() }
 
-        findViewById<TextView>(R.id.topBarTitle).setText(R.string.settings_title)
+        findViewById<TextView>(R.id.topBarTitle)?.setText(R.string.settings_title)
         BottomNav.bind(this, EcoTab.SETTINGS)
     }
 

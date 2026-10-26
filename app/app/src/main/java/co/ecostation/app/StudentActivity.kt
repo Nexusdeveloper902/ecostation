@@ -35,7 +35,7 @@ import java.util.Locale
 class StudentActivity : Activity() {
 
     private lateinit var settings: AppSettings
-    private lateinit var discovery: BackendDiscovery
+    private val discovery by lazy { BackendDiscovery(this) }
     private var endpoint: EcoEndpoint? = null
 
     private lateinit var loginGroup: View
@@ -82,7 +82,6 @@ class StudentActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_student)
         settings = AppSettings(this)
-        discovery = BackendDiscovery(this)
 
         loginGroup = findViewById(R.id.loginGroup)
         loadingGroup = findViewById(R.id.loadingGroup)
@@ -120,7 +119,7 @@ class StudentActivity : Activity() {
         rowAdapter = DepositAdapter(this)
         historyList.adapter = rowAdapter
 
-        findViewById<TextView>(R.id.topBarTitle).setText(R.string.student_title)
+        findViewById<TextView>(R.id.topBarTitle)?.setText(R.string.student_title)
         BottomNav.bind(this, EcoTab.POINTS)
 
         loginButton.setOnClickListener { login() }

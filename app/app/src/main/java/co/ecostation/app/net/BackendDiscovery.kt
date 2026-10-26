@@ -34,7 +34,10 @@ import java.util.concurrent.TimeUnit
  */
 class BackendDiscovery(context: Context) {
 
-    private val nsd = context.applicationContext.getSystemService(Context.NSD_SERVICE) as NsdManager
+    // Some OEM builds expose no NSD service. A hard cast here used to crash
+    // the whole screen in its constructor; fall back to the subnet probe.
+    private val nsd: NsdManager? =
+        context.applicationContext.getSystemService(Context.NSD_SERVICE) as? NsdManager
 
     fun discover(log: (String) -> Unit): EcoEndpoint? {
         viaMdns(log)?.let { return it }
@@ -45,6 +48,10 @@ class BackendDiscovery(context: Context) {
     // ------------------------------------------------------------------ mDNS
 
     private fun viaMdns(log: (String) -> Unit): EcoEndpoint? {
+        val manager = nsd ?: run {
+            log("mDNS: NSD no disponible en este dispositivo — usando sondeo")
+            return null
+        }
         val found = LinkedBlockingQueue<NsdServiceInfo>()
         val listener = object : NsdManager.DiscoveryListener {
             override fun onServiceFound(info: NsdServiceInfo) { found.add(info) }
@@ -59,7 +66,7 @@ class BackendDiscovery(context: Context) {
 
         val services = ArrayList<NsdServiceInfo>()
         try {
-            nsd.discoverServices(EcoEndpoint.SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
+            manager.discoverServices(EcoEndpoint.SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
             // Wait for the first answer, then briefly for any siblings.
             found.poll(BROWSE_TIMEOUT_MS, TimeUnit.MILLISECONDS)?.let { services.add(it) }
             if (services.isNotEmpty()) {
@@ -72,14 +79,14 @@ class BackendDiscovery(context: Context) {
             log("mDNS: ${e.javaClass.simpleName}: ${e.message}")
         } finally {
             try {
-                nsd.stopServiceDiscovery(listener)
+                manager.stopServiceDiscovery(listener)
             } catch (_: Exception) {
             }
         }
         if (services.isEmpty()) return null
 
         // Resolve one at a time (pre-Android 14 NSD refuses concurrent resolves).
-        val candidates = services.distinctBy { it.serviceName }.take(MAX_CONSIDERED).mapNotNull { resolve(it, log) }
+        val candidates = services.distinctBy { it.serviceName }.take(MAX_CONSIDERED).mapNotNull { resolve(manager, it, log) }
         val ranked = EcoEndpoint.rank(candidates)
         if (ranked.isEmpty()) return null
 
@@ -101,10 +108,10 @@ class BackendDiscovery(context: Context) {
     }
 
     @Suppress("DEPRECATION") // resolveService/host: still the only API below 34
-    private fun resolve(service: NsdServiceInfo, log: (String) -> Unit): EcoEndpoint.Candidate? {
+    private fun resolve(manager: NsdManager, service: NsdServiceInfo, log: (String) -> Unit): EcoEndpoint.Candidate? {
         val done = CountDownLatch(1)
         var result: EcoEndpoint.Candidate? = null
-        nsd.resolveService(service, object : NsdManager.ResolveListener {
+        manager.resolveService(service, object : NsdManager.ResolveListener {
             override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) {
                 log("mDNS: resolve '${info.serviceName}' failed ($errorCode)")
                 done.countDown()

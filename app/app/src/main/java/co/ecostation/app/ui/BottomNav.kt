@@ -38,9 +38,9 @@ object BottomNav {
             Triple(EcoTab.SETTINGS, R.id.navSettings, R.id.navSettingsIcon to R.id.navSettingsLabel),
         )
         for ((tab, itemId, iconAndLabel) in items) {
-            val item = activity.findViewById<LinearLayout>(itemId)
-            val icon = activity.findViewById<ImageView>(iconAndLabel.first)
-            val label = activity.findViewById<TextView>(iconAndLabel.second)
+            val item = activity.findViewById<LinearLayout>(itemId) ?: continue
+            val icon = activity.findViewById<ImageView>(iconAndLabel.first) ?: continue
+            val label = activity.findViewById<TextView>(iconAndLabel.second) ?: continue
             val isActive = tab == active
             item.setBackgroundResource(if (isActive) R.drawable.bg_nav_active else R.drawable.bg_nav_item)
             val color = activity.getColor(if (isActive) R.color.eco_primary_strong else R.color.eco_slate)
