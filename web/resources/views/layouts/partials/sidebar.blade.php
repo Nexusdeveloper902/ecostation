@@ -43,6 +43,10 @@
                 <x-icon name="broadcast" />
                 <span>En vivo</span>
             </a>
+            <a class="nav-item" href="{{ route('camera.preview') }}" @if (request()->routeIs('camera.preview')) aria-current="page" @endif>
+                <x-icon name="broadcast" />
+                <span>Cámara</span>
+            </a>
         </nav>
 
         <p class="sidebar__role">Administración</p>
@@ -82,6 +86,10 @@
             <a class="nav-item" href="{{ route('teacher.live') }}" @if (request()->routeIs('teacher.live')) aria-current="page" @endif>
                 <x-icon name="broadcast" />
                 <span>En vivo</span>
+            </a>
+            <a class="nav-item" href="{{ route('camera.preview') }}" @if (request()->routeIs('camera.preview')) aria-current="page" @endif>
+                <x-icon name="station" />
+                <span>Cámara</span>
             </a>
             <a class="nav-item" href="{{ route('teacher.export') }}" @if (request()->routeIs('teacher.export', 'teacher.export.csv', 'teacher.export.pdf', 'teacher.student.export.csv', 'teacher.student.export.pdf')) aria-current="page" @endif>
                 <x-icon name="download" />

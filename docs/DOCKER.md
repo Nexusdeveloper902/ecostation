@@ -117,6 +117,28 @@ purga diaria borra el archivo; el evento, la clasificación y los puntos se
 conservan. Las fotos de la actividad demo no existen (el seeder no crea
 imágenes); solo las capturas reales de la estación generan archivos.
 
+## Cámara en vivo
+
+La estación ESP32-CAM ya sirve su propio visualizador en
+`http://<IP_DE_LA_ESTACION>/` y un JPEG por petición en `/stream-frame`
+(además de `/preview.jpg`). Para verlo desde el panel:
+
+1. **Admin → Ajustes → Cámara de la estación**;
+2. pega la URL base de la estación, por ejemplo `http://192.168.40.192`
+   (sin puerto: la estación sirve en el 80);
+3. abre `http://<servidor>:8000/camera`.
+
+La página refresca `/stream-frame` cada 400 ms y se detiene cuando la
+pestaña queda oculta. Si la cámara no inicializa (`0x105`), las rutas de la
+estación responden 503 y la página muestra “Sin señal”. La página es solo
+para admin y docentes; no se expone a estudiantes.
+
+El navegador carga la imagen directamente desde la estación: el servidor no
+hace de proxy ni necesita acceso a la cámara. Si el panel se sirve por HTTPS,
+el preview HTTP de la estación puede bloquearse por contenido mixto; en ese
+caso usa el visualizador de la estación directamente o pon TLS también en la
+estación.
+
 ## Base de datos, respaldo y reinicio
 
 La base SQLite está en `/data/ecostation.sqlite` dentro del volumen

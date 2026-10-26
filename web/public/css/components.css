@@ -3768,3 +3768,32 @@ a.chip:hover {
         font-size: var(--eco-text-micro);
     }
 }
+
+/* ------------------------------------------------------------------ */
+/* Camera preview (GET /camera)                                        */
+/* ------------------------------------------------------------------ */
+.camera-stage {
+    display: grid;
+    place-items: center;
+    min-height: 320px;
+    padding: var(--eco-space-4);
+    border-radius: var(--eco-radius-lg);
+    background: var(--eco-ink);
+    overflow: hidden;
+}
+
+.camera-stage img {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    max-height: 62vh;
+    border-radius: var(--eco-radius-sm);
+    background: var(--eco-ink);
+}
+
+.camera-status {
+    margin-top: var(--eco-space-3);
+    color: var(--eco-slate);
+    font-size: var(--eco-text-label);
+    font-weight: 700;
+}

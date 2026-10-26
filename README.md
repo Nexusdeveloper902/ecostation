@@ -51,8 +51,13 @@ docker compose up -d --build
 Queda en `http://localhost:8000` (web/API), `ws://localhost:8081` (feed) y
 anuncia `_ecostation._tcp` en Linux. La base SQLite y la `APP_KEY` viven en el
 volumen `ecostation-data`; las fotos en `ecostation-storage`. La guía completa
-(cuentas demo, clave de la estación, respaldos, fotos, mDNS y producción) está
-en [`docs/DOCKER.md`](docs/DOCKER.md).
+(cuentas demo, clave de la estación, respaldos, fotos, cámara en vivo, mDNS y
+producción) está en [`docs/DOCKER.md`](docs/DOCKER.md).
+
+La cámara en vivo de la estación se configura en **Admin → Ajustes → Cámara de
+la estación** (por ejemplo `http://192.168.40.192`) y se abre en
+`/camera`; la estación también sirve `http://<IP_DE_LA_ESTACION>/` y
+`/stream-frame` por sí sola.
 
 También puedes usar `./run test` y `./run ci` (Pint + PHPUnit).
 
@@ -170,7 +175,7 @@ autoalojan; no hay CDN.
 
 | Componente | Comando | Último resultado |
 |---|---|---|
-| Web | `cd web && ./run ci` | 384 pruebas, 1.761 aserciones, Pint limpio |
+| Web | `cd web && ./run ci` | 390 pruebas, 1.775 aserciones, Pint limpio |
 | App | `cd app && ./gradlew :app:testDebugUnitTest` | 111 pruebas (110 + 1 e2e opt-in) |
 | Firmware | `cd firmware && pio test -e native` | 160 pruebas nativas |
 | Firmware e2e | `./firmware/scripts/e2e_web.sh` | 13/13 casos, `RESULTADO: E2E OK` |

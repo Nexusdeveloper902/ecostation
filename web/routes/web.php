@@ -8,6 +8,7 @@ use App\Http\Controllers\Web\Admin\StaffController as AdminStaffController;
 use App\Http\Controllers\Web\Admin\StationController as AdminStationController;
 use App\Http\Controllers\Web\Admin\StudentController as AdminStudentController;
 use App\Http\Controllers\Web\AuthController;
+use App\Http\Controllers\Web\CameraPreviewController;
 use App\Http\Controllers\Web\DepositPhotoController;
 use App\Http\Controllers\Web\ManifestController;
 use App\Http\Controllers\Web\PasswordController;
@@ -84,6 +85,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/teacher/classes/{class}', [TeacherDashboardController::class, 'showClass'])->name('teacher.class');
         Route::get('/teacher/students/{student}', [TeacherDashboardController::class, 'showStudent'])->name('teacher.student');
         Route::get('/teacher/live', [TeacherDashboardController::class, 'live'])->name('teacher.live');
+        Route::get('/camera', CameraPreviewController::class)->name('camera.preview');
         Route::get('/teacher/export', [TeacherExportController::class, 'page'])->name('teacher.export');
 
         Route::get('/teacher/export.csv', [TeacherExportController::class, 'csv'])->name('teacher.export.csv');

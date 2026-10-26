@@ -16,6 +16,9 @@ return [
         'classify_window_seconds' => (int) env('RECYCLING_CLASSIFY_WINDOW', 600),
     ],
     'leaderboard' => ['top' => 10],
+    // URL base del visualizador de una estación ESP32-CAM, por ejemplo
+    // http://192.168.40.192 . La página /camera la usa para el preview.
+    'camera' => ['preview_url' => env('ECOSTATION_CAMERA_PREVIEW_URL', '')],
     'device_auth' => [
         'allow_legacy_bearer' => env('DEVICE_AUTH_ALLOW_LEGACY_BEARER', true),
         'rate_limit_per_minute' => (int) env('DEVICE_AUTH_RATE_LIMIT', 60),

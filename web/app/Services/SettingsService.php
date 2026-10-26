@@ -28,6 +28,7 @@ class SettingsService
         'pairing.window_seconds' => ['ecostation.pairing_window_seconds', 'required|integer|between:10,600'],
         'accounts.student_email_domain' => ['ecostation.student_email_domain', 'required|string|max:190'],
         'accounts.student_initial_password' => ['ecostation.student_initial_password', 'nullable|string|min:8|max:72'],
+        'camera.preview_url' => ['ecostation.camera.preview_url', 'nullable|string|max:255'],
     ];
 
     private const INT_KEYS = [
@@ -112,6 +113,14 @@ class SettingsService
     public function pairingWindowSeconds(): int
     {
         return (int) $this->get('pairing.window_seconds');
+    }
+
+    /** Base URL of the station visualizer (e.g. http://192.168.40.192). */
+    public function cameraPreviewUrl(): ?string
+    {
+        $value = $this->get('camera.preview_url');
+
+        return is_string($value) && trim($value) !== '' ? rtrim(trim($value), '/') : null;
     }
 
     public function studentEmailDomain(): string

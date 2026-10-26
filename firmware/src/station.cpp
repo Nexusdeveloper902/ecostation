@@ -962,6 +962,8 @@ void Station::handleCardTap(const std::string& uid) {
 void Station::setupRoutes() {
     server_.on("/", HTTP_GET, [this]() { handleRoot(); });
     server_.on("/stream-frame", HTTP_GET, [this]() { handleStreamFrame(); });
+    // Direct snapshot alias, handy for <img> tags and /camera in the web app.
+    server_.on("/preview.jpg", HTTP_GET, [this]() { handleStreamFrame(); });
     server_.on("/capture.jpg", HTTP_GET, [this]() { handleCaptureImage(); });
     server_.on("/capture-status", HTTP_GET, [this]() { handleCaptureStatus(); });
     server_.onNotFound([this]() {

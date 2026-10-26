@@ -341,3 +341,20 @@ completo, estación flasheada y Monitor Serial abierto.
 
 Registra fecha, compilación y CUMPLE/FALLA por punto. Los agentes no
 tienen hardware: esta lista se completa en banco.
+
+## 10. Visualizador web de la cámara
+
+La estación sirve su propia vista en `http://<IP-de-la-estación>/`:
+
+| Ruta | Contenido |
+|---|---|
+| `/` | visualizador HTML: cámara en vivo + última captura + estado |
+| `/stream-frame` | un JPEG nuevo por petición (el visualizador lo refresca cada 200 ms) |
+| `/preview.jpg` | alias de un JPEG para incrustar en un `<img>` o en la página `/camera` del servidor |
+| `/capture.jpg` | última captura almacenada |
+| `/capture-status` | JSON con `id`, `size`, `available`, `busy`, `camera`, `nfc`, `wifi` |
+
+En el panel web, un admin o docente puede abrir `http://<servidor>:8000/camera`
+después de poner la URL de la estación en **Admin → Ajustes → Cámara de la
+estación**. La página refresca `/stream-frame` sin recargar. Si la cámara no
+inicializa (`0x105`), las rutas responden 503; revisa el flex y la alimentación.

@@ -35,7 +35,7 @@ class AdminSettingsTest extends TestCase
             ->assertOk()
             ->assertViewHas('values', fn (array $values) => $values['points.plastic'] === 10
                 && $values['photos.retention_days'] === 30
-                && count($values) === 9);
+                && count($values) === 10);
     }
 
     #[Test]

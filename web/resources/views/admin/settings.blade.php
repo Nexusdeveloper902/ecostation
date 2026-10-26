@@ -193,6 +193,44 @@
                     </div>
                 </section>
 
+                <section class="card" aria-labelledby="camera-title">
+                    <div class="card__header">
+                        <div>
+                            <h2 class="card__title" id="camera-title">Cámara de la estación</h2>
+                            <p class="card__subtitle">Preview en vivo para docentes y administración.</p>
+                        </div>
+                    </div>
+
+                    <div class="card__body">
+                        <div class="field">
+                            <label class="field__label" for="setting-camera-url">URL del visualizador</label>
+                            <div class="field__control">
+                                <x-icon name="station" class="field__icon" />
+                                <input
+                                    class="input"
+                                    id="setting-camera-url"
+                                    name="settings[camera.preview_url]"
+                                    type="text"
+                                    value="{{ $oldSettings['camera.preview_url'] ?? $values['camera.preview_url'] }}"
+                                    placeholder="http://192.168.40.192"
+                                    inputmode="url"
+                                    @if ($errorFor('camera.preview_url')) aria-invalid="true" @endif
+                                >
+                            </div>
+                            <p class="field__help">
+                                IP de la ESP32-CAM en la LAN, sin puerto (la estación sirve en el 80).
+                                Se usa en <code>/camera</code>. Déjala vacía para ocultar la vista.
+                            </p>
+                            @if ($errorFor('camera.preview_url'))
+                                <p class="field__error">
+                                    <x-icon name="error" />
+                                    <span>{{ $errorFor('camera.preview_url') }}</span>
+                                </p>
+                            @endif
+                        </div>
+                    </div>
+                </section>
+
                 <section class="card" aria-labelledby="accounts-title">
                     <div class="card__header">
                         <div>
