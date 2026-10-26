@@ -138,14 +138,18 @@ public:
                 return false;
             }
             hceSettling_ = false;
-            // Reset-locator (hce.11). adoptAts() calls PICC_RequestATS
-            // BEFORE it logs anything, so a TG1WDT reset between "spotted"
-            // and the RATS verdict is ambiguous: it is either the settle
-            // loop or the vendor driver's RATS. This line splits them —
-            // see it and reset => we died inside PICC_RequestATS; miss it
-            // and reset => we died in the settle wait.
+            // Reset-locator (hce.11). adoptAts() runs BEFORE it logs
+            // anything, so a reset between "spotted" and the RATS verdict
+            // is either the settle loop or the RATS path. This line
+            // splits them — see it and reset => RATS; miss it and reset
+            // => the settle wait.
+            // requestAtsSafe() (below) replaced the vendor
+            // PICC_RequestATS, whose unconditional `bufferSize - 2` copy
+            // overflowed the ATS struct on a CRC error. That was the
+            // TG1WDT_SYS_RESET observed right after this line.
             // / Localizador de reinicios: separa el bucle de espera del
-            //   RATS del driver.
+            //   RATS. requestAtsSafe() sustituye al driver, cuyo copiado
+            //   desbordaba el ATS al fallar la CRC (el TG1WDT de aquí).
             if (log_) {
                 log_->println("[NFC] espera cumplida — lanzando RATS ahora");
             }
@@ -414,6 +418,122 @@ private:
     bool atsMissing() const { return mfrc522_.tag.ats.size == 0; }
 
     /**
+     * RATS with the vendor's overflow fixed.
+     *
+     * MFRC522Extended::PICC_RequestATS (1.4.12) keeps decoding after
+     * PCD_TransceiveData fails. On a CRC error the driver has already set
+     * bufferSize to the number of bytes it read — often 0 or 1 — and then
+     * does:
+     *
+     *     memcpy(ats->data, bufferATS, bufferSize - 2);
+     *
+     * bufferSize is a byte, so 0 - 2 wraps to 254 and writes 254 bytes
+     * into the 62-byte Ats::data field on the caller's stack. That is the
+     * TG1WDT_SYS_RESET seen immediately after "lanzando RATS ahora": the
+     * returned frame was a partial/WTX answer, not an ATS, and the copy
+     * smashed the loop task's stack. Do the transceive here and return on
+     * every failure BEFORE touching `ats`; also reject frames whose
+     * declared ATS length does not match the received length (an S(WTX)
+     * has a valid CRC but is not an ATS).
+     * / RATS con el desbordamiento del driver corregido.
+     */
+    MFRC522::StatusCode requestAtsSafe(MFRC522Extended::Ats& ats) {
+        byte buffer[MFRC522::FIFO_SIZE];
+        byte received = MFRC522::FIFO_SIZE;
+        memset(buffer, 0, sizeof(buffer));
+
+        buffer[0] = MFRC522::PICC_CMD_RATS;
+        buffer[1] = 0x50;  // FSDI=5 (64 B), CID=0
+
+        MFRC522::StatusCode sc =
+            mfrc522_.PCD_CalculateCRC(buffer, 2, &buffer[2]);
+        if (sc != MFRC522::STATUS_OK) {
+            return sc;
+        }
+
+        sc = mfrc522_.PCD_TransceiveData(buffer, 4, buffer, &received,
+                                         nullptr, 0, true);
+        if (sc != MFRC522::STATUS_OK) {
+            mfrc522_.PICC_HaltA();
+            return sc;
+        }
+
+        // A valid ATS is: T0 (1 B) + optional TA/TB/TC + CRC_A (2 B).
+        // Its first byte is the ATS length without the CRC. Anything that
+        // does not agree is a lower-layer frame (S(WTX), NAK, noise) and
+        // must not be adopted as an ATS.
+        const byte atsSize = buffer[0];
+        if (atsSize < 1 || atsSize > sizeof(ats.data) ||
+            static_cast<byte>(atsSize + 2) != received) {
+            mfrc522_.PICC_HaltA();
+            return MFRC522::STATUS_CRC_WRONG;
+        }
+
+        ats.size = atsSize;
+        memcpy(ats.data, buffer, atsSize);
+
+        const byte t0 = buffer[1];
+        ats.ta1.transmitted = (t0 & 0x40) != 0;
+        ats.tb1.transmitted = (t0 & 0x20) != 0;
+        ats.tc1.transmitted = (t0 & 0x10) != 0;
+
+        switch (t0 & 0x0F) {
+            case 0x00: ats.fsc = 16; break;
+            case 0x01: ats.fsc = 24; break;
+            case 0x02: ats.fsc = 32; break;
+            case 0x03: ats.fsc = 40; break;
+            case 0x04: ats.fsc = 48; break;
+            case 0x05: ats.fsc = 64; break;
+            case 0x06: ats.fsc = 96; break;
+            case 0x07: ats.fsc = 128; break;
+            default: ats.fsc = 32; break;  // FSCI 8+ cannot fit the FIFO
+        }
+
+        byte index = 2;  // first optional byte, after T0
+        if (ats.ta1.transmitted) {
+            if (index >= atsSize) {
+                mfrc522_.PICC_HaltA();
+                return MFRC522::STATUS_CRC_WRONG;
+            }
+            const byte ta1 = buffer[index++];
+            ats.ta1.sameD = (ta1 & 0x80) != 0;
+            ats.ta1.ds = static_cast<MFRC522Extended::TagBitRates>(
+                (ta1 & 0x70) >> 4);
+            ats.ta1.dr = static_cast<MFRC522Extended::TagBitRates>(
+                ta1 & 0x07);
+        } else {
+            ats.ta1.ds = MFRC522Extended::BITRATE_106KBITS;
+            ats.ta1.dr = MFRC522Extended::BITRATE_106KBITS;
+        }
+
+        if (ats.tb1.transmitted) {
+            if (index >= atsSize) {
+                mfrc522_.PICC_HaltA();
+                return MFRC522::STATUS_CRC_WRONG;
+            }
+            const byte tb1 = buffer[index++];
+            ats.tb1.fwi = (tb1 & 0xF0) >> 4;
+            ats.tb1.sfgi = tb1 & 0x0F;
+        }
+
+        if (ats.tc1.transmitted) {
+            if (index >= atsSize) {
+                mfrc522_.PICC_HaltA();
+                return MFRC522::STATUS_CRC_WRONG;
+            }
+            const byte tc1 = buffer[index++];
+            ats.tc1.supportsCID = (tc1 & 0x02) != 0;
+            ats.tc1.supportsNAD = (tc1 & 0x01) != 0;
+        } else {
+            // No TC1: CID is supported by default (ISO/IEC 14443-4).
+            ats.tc1.supportsCID = true;
+            ats.tc1.supportsNAD = false;
+        }
+
+        return MFRC522::STATUS_OK;
+    }
+
+    /**
      * Adopt the ATS the driver drops (the actual bench blocker).
      *
      * MFRC522 1.4.12's PICC_Select parses a good ATS into a STACK LOCAL
@@ -435,7 +555,7 @@ private:
     void adoptAts(uint32_t settleMs) {
         MFRC522Extended::Ats ats;
         memset(&ats, 0, sizeof(ats));
-        const MFRC522::StatusCode sc = mfrc522_.PICC_RequestATS(&ats);
+        const MFRC522::StatusCode sc = requestAtsSafe(ats);
         if (log_) {
             log_->print("[NFC] RATS (espera ");
             log_->print(settleMs);

@@ -51,7 +51,7 @@ conservan su propia ruta intacta (UID RF → sin `credential_kind`).
 | Activación | RATS (`E0 50` + CRC_A, FSD = 64, CID = 0) → ATS; PPS solo si ATS/TA1 presente |
 | Tramas | I-blocks ISO-DEP, CID = 0, sin NAD; el lector confirma el encadenado teléfono→lector |
 | Límites | FIFO del RC522 = 64 B, así un I-block lleva ≤ ~57 B de APDU |
-| Driver | `MFRC522Extended` (misma librería `miguelbalboa/MFRC522`, sin dependencia extra): el override de `PICC_Select()` hace anticolisión + SELECT + RATS/ATS + PPS cuando el bit 6 del SAK señala T=CL; `TCL_Transceive(tag, apdu, len, resp, &respLen)` hace I-blocks con alternancia de número de bloque, manejo de CID y confirmación de respuestas encadenadas. Límites conocidos (documentados, no remediados): FSD fijo en 64, CID fijo en 0, sin NAD, sin WTX por S-block (el teléfono responde en ms — HCE lo hace), bitrates sobre 212 kbit/s no intentados. |
+| Driver | `MFRC522Extended` (misma librería `miguelbalboa/MFRC522`, sin dependencia extra): el override de `PICC_Select()` hace anticolisión + SELECT + RATS/ATS + PPS cuando el bit 6 del SAK señala T=CL; `TCL_Transceive(tag, apdu, len, resp, &respLen)` hace I-blocks con alternancia de número de bloque, manejo de CID y confirmación de respuestas encadenadas. RATS propio (`requestAtsSafe`): el `PICC_RequestATS` de 1.4.12 copia `bufferSize - 2` aunque la transcepción falle; con una respuesta parcial/CRC mala `bufferSize` es 0–1, el byte resta 254 y desborda `Ats::data` (reinicio `TG1WDT_SYS_RESET` justo tras «lanzando RATS ahora»). El reemplazo no toca el ATS si falla y rechaza tramas que no sean un ATS (p. ej. S(WTX) con CRC válida). Límites conocidos (documentados, no remediados): FSD fijo en 64, CID fijo en 0, sin NAD, sin WTX por S-block (el teléfono responde en ms — HCE lo hace), bitrates sobre 212 kbit/s no intentados. |
 
 ## Capa de aplicación
 
@@ -224,6 +224,11 @@ para no-ISO-DEP), un avistamiento ISO-DEP estaciona la sesión intacta
 toque (`adoptAts`, status registrado, ATS adoptado). Un objetivo que no
 responda ese RATS cae a la ruta UID. No se negocia PPS — 106 kbit/s es
 obligatorio y sobra para intercambios <70 B.
+
+`[NFC] espera cumplida — lanzando RATS ahora` seguido de un reinicio
+`TG1WDT_SYS_RESET`: era el desbordamiento de `PICC_RequestATS` descrito
+en la tabla de driver; desde `requestAtsSafe` esa ruta no puede escribir
+fuera del ATS. Si el reinicio reaparece, ya no es esta causa.
 
 `[NFC] SELECT HCE falló` (sin
 respuesta I-block) · `[NFC] SELECT HCE -> 6A82` (AID no enrutado) ·
