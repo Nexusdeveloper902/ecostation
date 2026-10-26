@@ -36,5 +36,8 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- Never call the real classifier from the test suite. -->
+        <env name="RECYCLING_CLASSIFIER_DRIVER" value="stub"/>
+        <env name="DEEPSEEK_API_KEY" value=""/>
     </php>
 </phpunit>

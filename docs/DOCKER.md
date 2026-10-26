@@ -117,6 +117,22 @@ purga diaria borra el archivo; el evento, la clasificación y los puntos se
 conservan. Las fotos de la actividad demo no existen (el seeder no crea
 imágenes); solo las capturas reales de la estación generan archivos.
 
+## Clasificación con DeepSeek
+
+El compose usa `stub` por defecto (sin red). Para activar DeepSeek, pon la
+clave en el `.env` de la raíz (ignorado por Git) y recrea el contenedor:
+
+```bash
+DEEPSEEK_API_KEY=sk-...          # tu clave real, nunca la subas
+RECYCLING_CLASSIFIER_DRIVER=deepseek
+docker compose up -d
+docker compose exec app php artisan llm-check
+```
+
+`llm-check` debe imprimir `OK: <material> (<confianza>)` y
+`json_object + thinking:disabled + imagen: compatible`. Las pruebas usan
+siempre `stub` (`phpunit.xml`), así que `./run ci` no gasta llamadas.
+
 ## Cámara en vivo
 
 La estación ESP32-CAM ya sirve su propio visualizador en
