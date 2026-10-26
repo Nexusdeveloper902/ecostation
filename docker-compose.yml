@@ -1,0 +1,71 @@
+name: ecostation
+
+# LAN demo stack:
+#   app  = Laravel HTTP + realtime WebSocket + scheduler (SQLite in a volume)
+#   mdns = _ecostation._tcp advertiser (Linux host network)
+#
+# `docker compose up -d --build` is the whole setup. The SQLite database is a
+# volume, not a separate server: the project is SQLite-only by design.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: ecostation/app:local
+    restart: unless-stopped
+    ports:
+      - "8000:8000"   # web + device API
+      # Host port == container port so /realtime/token advertises the right
+      # ws:// URL. Override in a root .env when 8081 is already taken.
+      - "${REALTIME_PORT:-8081}:${REALTIME_PORT:-8081}"
+    environment:
+      APP_NAME: EcoStation
+      APP_ENV: local
+      APP_DEBUG: "false"
+      APP_URL: ${APP_URL:-http://localhost:8000}
+      APP_LOCALE: es
+      APP_FALLBACK_LOCALE: es
+      APP_TIMEZONE: America/Bogota
+      DB_CONNECTION: sqlite
+      DB_DATABASE: /data/ecostation.sqlite
+      CACHE_STORE: database
+      SESSION_DRIVER: database
+      QUEUE_CONNECTION: sync
+      RECYCLING_CLASSIFIER_DRIVER: ${RECYCLING_CLASSIFIER_DRIVER:-stub}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      REALTIME_PORT: ${REALTIME_PORT:-8081}
+      # LAN demo: the token still authenticates every socket. Use explicit
+      # origins (e.g. http://192.168.40.30:8000) in production.
+      REALTIME_ALLOWED_ORIGINS: ${REALTIME_ALLOWED_ORIGINS:-*}
+      ECOSTATION_DEMO: "1"
+      # Keep this equal to firmware/include/secrets.h READER_API_KEY. It is
+      # applied only when the database is first seeded.
+      ECOSTATION_DEMO_READER_KEY: ${ECOSTATION_DEMO_READER_KEY:-DemoReaderKey0000000000000000000}
+      ECOSTATION_DEMO_ACTIVITY: ${ECOSTATION_DEMO_ACTIVITY:-1}
+    volumes:
+      - ecostation-data:/data
+      - ecostation-storage:/var/www/html/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/up >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+  # mDNS needs the host's network interfaces. This works on Linux; Docker
+  # Desktop on macOS/Windows does not support host networking, so use the
+  # manual server address there (documented in docs/DOCKER.md).
+  mdns:
+    image: python:3.12-alpine
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    volumes:
+      - ./web/scripts/mdns/announce.py:/announce.py:ro
+    command: ["python3", "/announce.py", "--port", "8000"]
+
+volumes:
+  ecostation-data:
+  ecostation-storage:

@@ -106,7 +106,14 @@ final class Handshake
 
         $normalized = strtolower(rtrim($origin, '/'));
         foreach ($allowedOrigins as $allowed) {
-            if (trim($allowed) !== '' && strtolower(rtrim(trim($allowed), '/')) === $normalized) {
+            $allowed = trim($allowed);
+            // Docker/LAN demo: an explicit `*` trusts any browser origin.
+            // The WebSocket token is still required; production should list
+            // the exact origins instead.
+            if ($allowed === '*') {
+                return true;
+            }
+            if ($allowed !== '' && strtolower(rtrim($allowed, '/')) === $normalized) {
                 return true;
             }
         }

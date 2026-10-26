@@ -65,9 +65,14 @@ class DemoSeeder extends Seeder
         $reader = Reader::where('label', 'Estación Demo')->first();
 
         if ($reader === null) {
+            // Docker/demo deployments can pin the station key so the firmware
+            // already flashed in the field keeps authenticating. Without it,
+            // a fresh random key is printed once below.
+            $demoKey = trim((string) env('ECOSTATION_DEMO_READER_KEY', ''));
+
             $reader = Reader::forceCreate([
                 'label' => 'Estación Demo',
-                'api_key' => Str::random(32),
+                'api_key' => $demoKey !== '' ? $demoKey : Str::random(32),
             ]);
             $this->command?->info("Reader API key (shown once): {$reader->api_key}");
         }

@@ -2,6 +2,8 @@
 .worktrees/
 .playwright-mcp/
 qa/
+.env
+.env.docker
 web/.env
 web/database/*.sqlite
 web/storage/app/private/*

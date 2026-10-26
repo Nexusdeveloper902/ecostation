@@ -40,6 +40,20 @@ Si el puerto 8081 está ocupado, define `REALTIME_PORT` y arranca ambos procesos
 con el mismo valor. Detrás de un proxy TLS, `REALTIME_PUBLIC_URL=wss://…`
 anuncia el feed por `wss`.
 
+### Docker (web + SQLite + feed + mDNS)
+
+La forma más rápida de levantar todo, con base y fotos persistentes:
+
+```bash
+docker compose up -d --build
+```
+
+Queda en `http://localhost:8000` (web/API), `ws://localhost:8081` (feed) y
+anuncia `_ecostation._tcp` en Linux. La base SQLite y la `APP_KEY` viven en el
+volumen `ecostation-data`; las fotos en `ecostation-storage`. La guía completa
+(cuentas demo, clave de la estación, respaldos, fotos, mDNS y producción) está
+en [`docs/DOCKER.md`](docs/DOCKER.md).
+
 También puedes usar `./run test` y `./run ci` (Pint + PHPUnit).
 
 ### Cuentas demo (`local`/`testing`)
@@ -156,7 +170,7 @@ autoalojan; no hay CDN.
 
 | Componente | Comando | Último resultado |
 |---|---|---|
-| Web | `cd web && ./run ci` | 383 pruebas, 1.760 aserciones, Pint limpio |
+| Web | `cd web && ./run ci` | 384 pruebas, 1.761 aserciones, Pint limpio |
 | App | `cd app && ./gradlew :app:testDebugUnitTest` | 111 pruebas (110 + 1 e2e opt-in) |
 | Firmware | `cd firmware && pio test -e native` | 160 pruebas nativas |
 | Firmware e2e | `./firmware/scripts/e2e_web.sh` | 13/13 casos, `RESULTADO: E2E OK` |

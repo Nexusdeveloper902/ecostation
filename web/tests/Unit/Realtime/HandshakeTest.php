@@ -137,6 +137,16 @@ class HandshakeTest extends TestCase
     }
 
     #[Test]
+    public function an_explicit_wildcard_is_for_lan_demos_only_and_allows_any_origin(): void
+    {
+        $request = Handshake::parseRequest($this->upgradeHead([
+            'Origin' => 'http://192.168.40.30:8000',
+        ]));
+
+        $this->assertTrue(Handshake::originAllowed($request, ['*']));
+    }
+
+    #[Test]
     public function a_same_host_different_port_is_cross_origin_and_rejected(): void
     {
         $request = Handshake::parseRequest($this->upgradeHead([
