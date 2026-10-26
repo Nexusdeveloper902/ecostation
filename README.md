@@ -157,7 +157,7 @@ autoalojan; no hay CDN.
 | Componente | Comando | Último resultado |
 |---|---|---|
 | Web | `cd web && ./run ci` | 383 pruebas, 1.760 aserciones, Pint limpio |
-| App | `cd app && ./gradlew :app:testDebugUnitTest` | 110 pruebas (109 + 1 e2e opt-in) |
+| App | `cd app && ./gradlew :app:testDebugUnitTest` | 111 pruebas (110 + 1 e2e opt-in) |
 | Firmware | `cd firmware && pio test -e native` | 160 pruebas nativas |
 | Firmware e2e | `./firmware/scripts/e2e_web.sh` | 13/13 casos, `RESULTADO: E2E OK` |
 

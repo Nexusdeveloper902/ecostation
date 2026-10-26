@@ -7,7 +7,7 @@ Fecha: 2026-10-23. Rama de integración: `main`.
 | Pista | Plan | Estado | Verificación |
 |---|---|---|---|
 | Web (`web/`) | Tasks 1–20 | Completa, incluida la piel visual | `./run ci`: 383 pruebas, 1.760 aserciones, Pint limpio |
-| App (`app/`) | Tasks 1–9 | Completa, incluida la piel Boti | 110 pruebas JVM (109 + 1 e2e opt-in), `assembleDebug`, `assembleDebugAndroidTest`, `lintDebug` |
+| App (`app/`) | Tasks 1–9 | Completa, incluida la piel Boti | 111 pruebas JVM (110 + 1 e2e opt-in), `assembleDebug`, `assembleDebugAndroidTest`, `lintDebug` |
 | Firmware (`firmware/`) | Tasks 1–10 | Completa | 160 pruebas nativas, `pio run -e esp32cam` SUCCESS, e2e 13/13 |
 | Diseño (`design/`) | Penpot | Concepto B · Boti aplicado | `DESIGN-SPEC.md` + exportes PNG |
 
