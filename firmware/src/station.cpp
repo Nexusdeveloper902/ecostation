@@ -271,6 +271,13 @@ bool Station::initializeCamera() {
     esp_err_t err = esp_camera_init(&config);
     if (err != ESP_OK) {
         Serial.printf("Falló la inicialización de la cámara: 0x%x\n", err);
+        if (err == ESP_ERR_NOT_FOUND) {
+            // 0x105 is the SCCB probe: no sensor answered. This is hardware
+            // (flex, power, wrong module) far more often than firmware.
+            Serial.println("0x105 = ESP_ERR_NOT_FOUND: ningún sensor respondió por SCCB.");
+            Serial.println("Revisa el flex de la cámara, que esté bien asentado y que la placa tenga 3.3 V estables.");
+            Serial.println("La estación sigue funcionando sin cámara (modo degradado).");
+        }
         return false;
     }
 
