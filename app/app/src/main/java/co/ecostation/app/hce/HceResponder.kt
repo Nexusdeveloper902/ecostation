@@ -31,23 +31,33 @@ class HceResponder(
 
     fun respond(commandApdu: ByteArray): ByteArray {
         val id = credentialId()
-        val response = ApduProtocol.process(
-            commandApdu,
-            session,
-            id,
-            keys,
-            enrollment,
-            clockMs(),
-            onReleased = { raw ->
-                // Flag the adoption BEFORE the store import (fail-safe: worst
-                // case the UI shows LLAVE ENVIADA) and roll it back only if the
-                // store refuses the key.
-                onAdopting?.invoke()
-                val adopted = keys.adopt(id, raw)
-                if (!adopted) onAdoptFailed?.invoke()
-                adopted
-            },
-        )
+        val now = clockMs()
+        // A pairing window's pending key must sign CHALLENGE: ENROLL later
+        // hands over that same key, and the backend checks the MAC with it.
+        // Outside a window peek() is null and the stored key answers.
+        val pending = enrollment.peek(id, now)
+        val response = try {
+            ApduProtocol.process(
+                commandApdu,
+                session,
+                id,
+                keys,
+                enrollment,
+                now,
+                pendingKey = pending,
+                onReleased = { raw ->
+                    // Flag the adoption BEFORE the store import (fail-safe:
+                    // worst case the UI shows LLAVE ENVIADA) and roll it back
+                    // only if the store refuses the key.
+                    onAdopting?.invoke()
+                    val adopted = keys.adopt(id, raw)
+                    if (!adopted) onAdoptFailed?.invoke()
+                    adopted
+                },
+            )
+        } finally {
+            pending?.fill(0)
+        }
         if (isSuccess(response)) {
             when {
                 isChallenge(commandApdu) -> onAuthenticated?.invoke()
@@ -125,12 +135,9 @@ object CredentialRuntime {
         if (!keys.isAvailable()) return false
         val raw = ByteArray(CredentialKeyStore.KEY_BYTES).also { SecureRandom().nextBytes(it) }
         try {
-            // A NEVER-LINKED phone must answer CHALLENGE before the reader
-            // sends ENROLL, so the first link imports a provisional key now.
-            // A re-link keeps the old key until ENROLL adopts the new one.
-            if (!keys.hasKey(credentialId) && !keys.adopt(credentialId, raw)) {
-                return false
-            }
+            // The key stays pending in the window: CHALLENGE uses it (peek)
+            // and ENROLL hands it over and adopts it. Nothing is imported
+            // here, so cancelling a re-link leaves the old key working.
             enrollment.open(credentialId, raw, clockMs())
         } finally {
             raw.fill(0)

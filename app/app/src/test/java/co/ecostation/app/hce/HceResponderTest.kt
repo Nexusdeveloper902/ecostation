@@ -122,7 +122,7 @@ class HceResponderTest {
     }
 
     @Test
-    fun enroll_adopts_the_new_key_and_the_old_key_kept_working_until_then() {
+    fun enroll_adopts_the_pending_key_and_challenge_uses_it() {
         val keys = InMemoryCredentialKeyStore()
         val window = EnrollmentWindow(ttlMs = 60_000)
         val cred = ApduProtocolTest.VECTOR_CRED
@@ -135,11 +135,16 @@ class HceResponderTest {
 
         val r = responder(keys, window)
         r.respond(select)
-        // Until ENROLL, the OLD key still answers: a cancelled link is harmless.
+        // During the window CHALLENGE must use the PENDING key: ENROLL will
+        // hand that same key over, and the backend checks the MAC with it.
+        // The old key is untouched in the store until adoption.
         val before = r.respond(challenge(ApduProtocolTest.VECTOR_NONCE)).sliceArray(17 until 49)
+        val pendingMac = InMemoryCredentialKeyStore().apply { put(cred, newKey) }
+            .mac(cred, ApduProtocol.challengeMessage(cred, hex(ApduProtocolTest.VECTOR_NONCE)))
+        assertArrayEquals(pendingMac, before)
         val oldMac = InMemoryCredentialKeyStore().apply { put(cred, oldKey) }
             .mac(cred, ApduProtocol.challengeMessage(cred, hex(ApduProtocolTest.VECTOR_NONCE)))
-        assertArrayEquals(oldMac, before)
+        assertFalse(oldMac.contentEquals(before))
 
         val enrolled = r.respond(enroll)
         assertEquals("ENROLAR -> 9000", r.describe(enroll, enrolled))
@@ -150,7 +155,7 @@ class HceResponderTest {
         val newMac = InMemoryCredentialKeyStore().apply { put(cred, newKey) }
             .mac(cred, ApduProtocol.challengeMessage(cred, hex(ApduProtocolTest.VECTOR_NONCE)))
         assertArrayEquals(newMac, after)
-        assertFalse(before.contentEquals(after))
+        assertArrayEquals(before, after)
 
         // One release only.
         assertArrayEquals(hex("6985"), r.respond(enroll))

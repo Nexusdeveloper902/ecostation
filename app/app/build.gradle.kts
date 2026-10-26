@@ -24,8 +24,8 @@ android {
         applicationId = "co.ecostation.app"
         minSdk = 24 // HCE requires API 19+; 24 covers all maintained devices
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.2"
         // Instrumented tests use the platform's own android.test runner
         // (useLibrary below): no AndroidX, not even for tests.
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"

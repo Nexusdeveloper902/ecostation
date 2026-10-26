@@ -33,6 +33,23 @@ class EnrollmentWindow(private val ttlMs: Long = DEFAULT_TTL_MS) {
     }
 
     /**
+     * The pending key without consuming the window. The pairing flow needs
+     * this for CHALLENGE: the MAC must be computed with the SAME new key
+     * that ENROLL will hand over, even when the phone already has an old key.
+     * Returns a copy the caller must wipe. Never releases the hand-off.
+     */
+    @Synchronized
+    fun peek(credentialId: String, nowMs: Long): ByteArray? {
+        val held = key ?: return null
+        if (nowMs >= expiresAtMs) {
+            close()
+            return null
+        }
+        if (credentialId != this.credentialId) return null
+        return held.copyOf()
+    }
+
+    /**
      * The key for [credentialId], at most once, while the window is open.
      * Returns a copy the caller must wipe. Null means the window is closed,
      * has expired, or belongs to another id.

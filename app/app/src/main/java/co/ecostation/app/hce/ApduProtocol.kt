@@ -1,6 +1,8 @@
 package co.ecostation.app.hce
 
 import co.ecostation.app.BuildConfig
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 /**
  * Byte-exact credential protocol (phone side), HCE_PROTOCOL.md v1.1.
@@ -87,6 +89,7 @@ object ApduProtocol {
         session: Session,
         credentialId: String,
         keys: CredentialKeyStore,
+        pendingKey: ByteArray? = null,
     ): ByteArray {
         if (!session.selected) return SW_CONDITIONS
         if (cmd.size < 5) return SW_WRONG_LENGTH
@@ -94,7 +97,14 @@ object ApduProtocol {
         if (lc != NONCE_LEN || cmd.size < 5 + lc) return SW_WRONG_LENGTH
         val nonce = cmd.sliceArray(5 until 5 + NONCE_LEN)
         val credBytes = credentialId.toByteArray(Charsets.US_ASCII)
-        val mac = keys.mac(credentialId, challengeMessage(credentialId, nonce))
+        // During pairing the phone must answer with the NEW key (the one
+        // ENROLL will hand over), not the old one still in the Keystore.
+        // The pairing window owns that pending key; outside it, use the store.
+        val mac = if (pendingKey != null && pendingKey.size == CredentialKeyStore.KEY_BYTES) {
+            hmac(pendingKey, challengeMessage(credentialId, nonce))
+        } else {
+            keys.mac(credentialId, challengeMessage(credentialId, nonce))
+        }
         if (mac == null || mac.size != HMAC_LEN) return SW_KEY_MISSING
         return byteArrayOf(credBytes.size.toByte()) + credBytes + mac + SW_OK
     }
@@ -130,6 +140,16 @@ object ApduProtocol {
         }
     }
 
+    /** HMAC-SHA256 with the pairing window's raw pending key. */
+    private fun hmac(key: ByteArray, message: ByteArray): ByteArray? = try {
+        Mac.getInstance("HmacSHA256").run {
+            init(SecretKeySpec(key, "HmacSHA256"))
+            doFinal(message)
+        }
+    } catch (e: Exception) {
+        null
+    }
+
     /**
      * Pure formatter for the app's "Enrutado del AID" verdict (see
      * MainActivity.renderDiagnostics). Kept here — not in the Activity — so
@@ -155,6 +175,7 @@ object ApduProtocol {
         keys: CredentialKeyStore,
         window: EnrollmentWindow,
         nowMs: Long,
+        pendingKey: ByteArray? = null,
         onReleased: ((ByteArray) -> Boolean)? = null,
     ): ByteArray {
         if (cmd.size < 4) return SW_WRONG_LENGTH
@@ -164,7 +185,7 @@ object ApduProtocol {
                 else -> SW_INS_UNKNOWN
             }
             CLA_AUTH -> when (cmd[1]) {
-                INS_CHALLENGE -> processChallenge(cmd, session, credentialId, keys)
+                INS_CHALLENGE -> processChallenge(cmd, session, credentialId, keys, pendingKey)
                 INS_ENROLL -> processEnroll(cmd, session, credentialId, window, nowMs, onReleased)
                 else -> SW_INS_UNKNOWN
             }
